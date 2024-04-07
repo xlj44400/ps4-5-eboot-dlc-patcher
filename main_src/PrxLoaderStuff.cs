@@ -196,7 +196,7 @@ internal static class PrxLoaderStuff
             // TODO: add switch to auto continue for this scenario
             // prompt user if they want to with loading prx at sceAppContentInitialize since its possibly unsafe
             
-            if(ConsoleUi.Confirm("sceSysmoduleLoadModule(0xB4) not found, do you want to load prx at sceAppContentInitialize instead? Although its unlikely, the game may call another function before sceAppContentInitialize in which case the game would crash. Continue?"))
+            if(!ConsoleUi.Confirm("sceSysmoduleLoadModule(0xB4) not found, do you want to load prx at sceAppContentInitialize instead? Although its unlikely, the game may call another function before sceAppContentInitialize in which case the game would crash. Continue?"))
             {
                 throw new Exception("User aborted");
             }
