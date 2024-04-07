@@ -14,16 +14,17 @@ This is intended to be used on ps5 where dlc fpkgs dont work. It automatically p
 Other os and arch binaries are available [here](https://github.com/idlesauce/ps4-eboot-dlc-patcher/releases/latest), along with a `framework-dependent` version which is cross-platform, but requires the dotnet 8 runtime.
   
 ## Instructions
-1. Extract the update pkg of the game, or if the game is base only or merged base+update, then extract the `Sc0` and `sce_sys` along with the executables to patch. The executables you need will most likely be `eboot.bin` and other `.elf` files (most games only use the `eboot.bin`) (it could also be `.prx`, but ignore `.prx` files in the `sce_module` folder)
+1. Extract the update pkg of the game, or if the game is base only or merged base+update, then extract the `Sc0` and `sce_sys` folders along with the executables to patch. The executables you need will most likely be `eboot.bin` and other `.elf` files (most games only use the `eboot.bin`) (it could also be `.prx`, but ignore `.prx` files in the `sce_module` folder)
 1. Run selfutil on the executables to decrypt them.
 1. For the easiest usage copy all the dlc pkgs and executables into a folder then highlight and drag them onto the `ps4-eboot-dlc-patcher` exe. (You can also drag just the dlc pkgs onto it and enter the executables paths in the menu, or enter all paths as cli arguments)
 1. Select patch executable(s) and wait for the patcher to do its thing
 1. At the end the patcher will show a list of paths for each dlc with extra data, you'll need to extract the contents of the respective dlc's Image0 into the given folder inside the update's Image0.
-1. The patcher outputs the patched executables in the same folder as the patcher exe/eboot_patcher_output, copy back the executables into the update folder. Make sure you rename the file back to what it was before you ran selfutil since it changes the extension to .elf! The dlcldr.prx always goes into the root of Image0 of the update, even if the exeutable patches wasnt in that folder.
+1. The patcher outputs the patched executables in the same folder as the patcher exe/eboot_patcher_output, copy back the executables into the update folder. Make sure you rename the file back to what it was before you ran selfutil since it changes the extension to .elf! The `dlcldr.prx` always goes into the root of Image0 of the update, even if the exeutable patches wasnt in that folder.
 1. Repack the update
 
 ## Limitations
-- Right now only games that rely on `libSceAppContent` is supported, a some newer cross-gen games use `libSceNpEntitlementAccess`, if this is the case the patcher will give an error, support for this library is doable i just havent gotten around to it yet.
+- Right now only games that rely on `libSceAppContent` is supported, some newer cross-gen games use `libSceNpEntitlementAccess`, if this is the case the patcher will give an error, support for this library is doable i just havent gotten around to it yet.
+- This isnt a limitation of this program, but something to note is that you cannot create update pkgs for remaster type pkgs.
 
 ## Credits and thanks
 - The biggest thanks to [jocover](https://github.com/jocover) who came up with the idea, without whom i never would've learned this was possible.
