@@ -1,7 +1,7 @@
 .intel_syntax noprefix
 .section ".text"
 
-.extern sceAppContentAppParamGetInt
+# .extern sceAppContentAppParamGetInt
 .extern sceAppContentAddcontEnqueueDownload
 .extern sceAppContentTemporaryDataMount2
 .extern sceAppContentTemporaryDataUnmount
@@ -32,7 +32,7 @@
 # .extern sceAppContentDownload1Shrink
 # .extern sceAppContentGetPftFlag
 
-.globl dlcldr_sceAppContentAppParamGetInt
+# .globl dlcldr_sceAppContentAppParamGetInt
 .globl dlcldr_sceAppContentAddcontEnqueueDownload
 .globl dlcldr_sceAppContentTemporaryDataMount2
 .globl dlcldr_sceAppContentTemporaryDataUnmount
@@ -62,8 +62,8 @@
 # .globl dlcldr_sceAppContentGetPftFlag
 
 
-dlcldr_sceAppContentAppParamGetInt:
-    jmp sceAppContentAppParamGetInt
+# dlcldr_sceAppContentAppParamGetInt:
+#     jmp sceAppContentAppParamGetInt
 
 dlcldr_sceAppContentAddcontEnqueueDownload:
     jmp sceAppContentAddcontEnqueueDownload

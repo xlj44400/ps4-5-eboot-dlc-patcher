@@ -8,7 +8,7 @@ REM Change the working directory to the script's location
 cd %~dp0
 
 REM Libraries to link in
-set libraries=-lc -lkernel -lSceSysmodule -lSceAppContent -lSceAppContentIro -lSceAppContentSc -lc++
+set libraries=-lc -lkernel -lSceSysmodule -lSceAppContent -lSceAppContentIro -lSceAppContentSc -lSceSaveData -lSceUserService -lc++
 
 set intdir=.\temp
 set targetname=dlcldr

@@ -1,8 +1,11 @@
 
 #define LIBRARY_IMPL (1)
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <orbis/libkernel.h>
 #include <orbis/Sysmodule.h>
+#include <sys/socket.h>
 #include "appcont.h"
 #include <string.h>
 
@@ -39,6 +42,9 @@ __asm__(
 // this does not get called ever?
 int module_start(int64_t args, const void *argp)
 {
+	__asm__(
+		".intel_syntax noprefix \n"
+		"ud2 \n");
 	for (void (**i)(void) = __init_array_start; i != __init_array_end; i++)
 	{
 		i[0]();
@@ -54,23 +60,36 @@ int module_stop(int64_t args, const void *argp)
 
 #define SCE_SYSMODULE_APP_CONTENT 0x00b4
 
+int32_t DEBUG_MODE = -1; // injected by main script
+
 // snprintf crashes if used in init...?
 int32_t _init()
 {
-	// delete previous log
-	// sceKernelUnlink("/data/dlcldr.log");
-
-	// append_to_log("init called\n");
+	if (DEBUG_MODE != 0)
+	{
+		// delete previous log
+		sceKernelUnlink("/data/dlcldr.log");
+		Log("[dlcldr] init");
+	}
 
 	int res = sceSysmoduleLoadModule(SCE_SYSMODULE_APP_CONTENT);
 
 	if (res != SCE_OK)
 	{
-		// append_to_log("Failed to load libSceAppContent\n");
+		// we'll crash so might as well log
+		char log_buf[250];
+		strcat(log_buf, "[dlcldr] sceSysmoduleLoadModule call failed for SCE_SYSMODULE_APP_CONTENT. res: ");
+		char res_str[10];
+		intToStr(res, res_str);
+		strcat(log_buf, res_str);
+		Log(log_buf);
 		return -1;
 	}
 
-	// append_to_log("libSceAppContent loaded\n");
+	if (DEBUG_MODE != 0)
+	{
+		Log("[dlcldr] loaded libSceAppContent");
+	}
 
 	SceAppContentInitParam initParam;
 	SceAppContentBootParam bootParam;
@@ -80,15 +99,21 @@ int32_t _init()
 
 	if (res < 0)
 	{
-		// append_to_log("sceAppContentInitialize call failed. res: ");
-		// char res_str[10];
-		// intToStr(res, res_str);
-		// append_to_log(res_str);
-		// append_to_log("\n");
+		// we'll crash so might as well log
+		char log_buf[250];
+		strcat(log_buf, "[dlcldr] sceAppContentInitialize call failed. res: ");
+		char res_str[10];
+		intToStr(res, res_str);
+		strcat(log_buf, res_str);
+		Log(log_buf);
 		return -1;
 	}
 
-	// append_to_log("sceAppContentInitialize call success\n");
+	if (DEBUG_MODE != 0)
+	{
+		Log("[dlcldr] initialized libSceAppContent");
+	}
+
 	return 0;
 }
 
@@ -144,23 +169,28 @@ void intToStr(int num, char *str)
 	}
 }
 
-void ptrToHexStr(void *ptr, char *str)
+void Log(const char *str)
 {
-	const char *hexDigits = "0123456789ABCDEF";
-	uintptr_t val = (uintptr_t)ptr;
+	char *new_str = (char *)malloc(strlen(str) + 2);
+	strcpy(new_str, str);
+	strcat(new_str, "\n");
 
-	int numHexDigits = sizeof(val) * 2;
+	sceKernelDebugOutText(0, new_str);
+	append_to_log_file(new_str);
+	free(new_str);
 
-	for (int i = numHexDigits - 1; i >= 0; --i)
+	if (DEBUG_MODE == 2)
 	{
-		str[i] = hexDigits[val & 0xF];
-		val >>= 4;
-	}
+		OrbisNotificationRequest Buffer;
+		memset(&Buffer, 0, sizeof(OrbisNotificationRequest));
+		strncpy(Buffer.message, str, 1024);
+		Buffer.targetId = -1;
 
-	str[numHexDigits] = '\0';
+		int res = sceKernelSendNotificationRequest(0, &Buffer, sizeof(Buffer), 0);
+	}
 }
 
-int append_to_log(const char *str)
+int append_to_log_file(const char *str)
 {
 	int fd = sceKernelOpen("/data/dlcldr.log", SCE_KERNEL_O_WRONLY | SCE_KERNEL_O_CREAT | SCE_KERNEL_O_APPEND, SCE_KERNEL_S_IRWU);
 
@@ -181,14 +211,41 @@ int32_t dlcldr_sceAppContentInitialize(
 	SceAppContentInitParam *initParam,
 	SceAppContentBootParam *bootParam)
 {
-	// append_to_log("dlcldr_sceAppContentInitialize called\n");
+	if (DEBUG_MODE != 0)
+	{
+		Log("[dlcldr] dlcldr_sceAppContentInitialize called");
+	}
 	return 0;
+}
+
+int32_t dlcldr_sceAppContentAppParamGetInt(
+	SceAppContentAppParamId paramId,
+	int32_t *value)
+{
+	// patch trial flag
+	if (paramId == SCE_APP_CONTENT_APPPARAM_ID_SKU_FLAG)
+	{
+		if (DEBUG_MODE != 0)
+		{
+			Log("[dlcldr] dlcldr_sceAppContentAppParamGetInt called for SKU_FLAG, returning FULL");
+		}
+		*value = SCE_APP_CONTENT_APPPARAM_SKU_FLAG_FULL;
+		return 0;
+	}
+
+	if (DEBUG_MODE != 0)
+	{
+		Log("[dlcldr] dlcldr_sceAppContentAppParamGetInt proxy called");
+	}
+
+	return sceAppContentAppParamGetInt(paramId, value);
 }
 
 int32_t addcont_count = -1;
 
-SceAppContentAddcontInfo addcontInfo[SCE_APP_CONTENT_INFO_LIST_MAX_SIZE] = {
-	{{"PREO02AMZN00R0VO"}, 0}};
+dlcldr_struct addcontInfo[SCE_APP_CONTENT_INFO_LIST_MAX_SIZE] = {
+	{{"0000000000000000"}, 4, {0xCA, 0xB6, 0xD7, 0xB1, 0xEC, 0x15, 0x39, 0xCE, 0xCE, 0xEE, 0xE9, 0x00, 0x53, 0xE6, 0x91, 0xC9}},
+};
 
 int32_t dlcldr_sceAppContentGetAddcontInfoList(
 	SceNpServiceLabel serviceLabel,
@@ -196,7 +253,12 @@ int32_t dlcldr_sceAppContentGetAddcontInfoList(
 	uint32_t listNum,
 	uint32_t *hitNum)
 {
-	// append_to_log("dlcldr_sceAppContentGetAddcontInfoList called\n");
+	if (DEBUG_MODE != 0)
+	{
+		char log_buf[250];
+		snprintf(log_buf, 250, "[dlcldr] dlcldr_sceAppContentGetAddcontInfoList called with listNum: %d", listNum);
+		Log(log_buf);
+	}
 
 	if (listNum == 0)
 	{
@@ -209,18 +271,24 @@ int32_t dlcldr_sceAppContentGetAddcontInfoList(
 		return 0;
 	}
 
-	for (int i = 0; i < listNum; i++)
+	int dlcsToList = addcont_count < listNum ? addcont_count : listNum;
+
+	for (int i = 0; i < dlcsToList; i++)
 	{
-		if (i < addcont_count)
-		{
-			strncpy(list[i].entitlementLabel.data, addcontInfo[i].entitlementLabel.data, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE);
-			list[i].status = addcontInfo[i].status;
-		}
+		strncpy(list[i].entitlementLabel.data, addcontInfo[i].entitlementLabel, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE);
+		list[i].status = addcontInfo[i].status;
 	}
 
 	if (hitNum != NULL)
 	{
-		*hitNum = listNum < addcont_count ? listNum : addcont_count;
+		*hitNum = dlcsToList;
+	}
+
+	if (DEBUG_MODE != 0)
+	{
+		char log_buf[250];
+		snprintf(log_buf, 250, "[dlcldr] dlcldr_sceAppContentGetAddcontInfoList returned %d dlc(s)", dlcsToList);
+		Log(log_buf);
 	}
 
 	return 0;
@@ -231,22 +299,36 @@ int32_t dlcldr_sceAppContentGetAddcontInfo(
 	const SceNpUnifiedEntitlementLabel *entitlementLabel,
 	SceAppContentAddcontInfo *info)
 {
+	if (DEBUG_MODE != 0)
+	{
+		char log_buf[250];
+		snprintf(log_buf, 250, "[dlcldr] dlcldr_sceAppContentGetAddcontInfo called for %s", entitlementLabel->data);
+		Log(log_buf);
+	}
 	for (int i = 0; i < addcont_count; i++)
 	{
-		if (strcmp(entitlementLabel->data, addcontInfo[i].entitlementLabel.data) == 0)
+		if (memcmp(entitlementLabel->data, addcontInfo[i].entitlementLabel, 16) == 0)
 		{
-			// char log_buf[250];
-			// snprintf(log_buf, 250, "Entitlement label match: %s\n", entitlementLabel->data);
-			// append_to_log(log_buf);
-			strncpy(info->entitlementLabel.data, addcontInfo[i].entitlementLabel.data, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE);
-			info->status = 4;
+			if (DEBUG_MODE != 0)
+			{
+				char log_buf[250];
+				snprintf(log_buf, 250, "[dlcldr] dlcldr_sceAppContentGetAddcontInfo found %s", entitlementLabel->data);
+				Log(log_buf);
+			}
+
+			strncpy(info->entitlementLabel.data, addcontInfo[i].entitlementLabel, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE);
+			info->status = addcontInfo[i].status;
 			return 0;
 		}
 	}
 
-	// char log_buf[250];
-	// snprintf(log_buf, 250, "Entitlement label not found: %s\n", entitlementLabel->data);
-	// append_to_log(log_buf);
+	if (DEBUG_MODE != 0)
+	{
+		char log_buf[250];
+		snprintf(log_buf, 250, "[dlcldr] dlcldr_sceAppContentGetAddcontInfo did not find %s, returning SCE_APP_CONTENT_ERROR_DRM_NO_ENTITLEMENT", entitlementLabel->data);
+		Log(log_buf);
+	}
+
 	return SCE_APP_CONTENT_ERROR_DRM_NO_ENTITLEMENT;
 }
 
@@ -267,19 +349,18 @@ int32_t dlcldr_sceNpEntitlementAccessGetAddcontEntitlementInfoList(
 		return 0;
 	}
 
-	for (int i = 0; i < listNum; i++)
+	int list_count = listNum < addcont_count ? listNum : addcont_count;
+
+	for (int i = 0; i < list_count; i++)
 	{
-		if (i < addcont_count)
-		{
-			strncpy(list[i].entitlementLabel.data, addcontInfo[i].entitlementLabel.data, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE);
-			list[i].downloadStatus = addcontInfo[i].status;
-			list[i].packageType = SCE_NP_ENTITLEMENT_ACCESS_PACKAGE_TYPE_PSAC;
-		}
+		strncpy(list[i].entitlementLabel.data, addcontInfo[i].entitlementLabel, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE);
+		list[i].downloadStatus = addcontInfo[i].status;
+		list[i].packageType = SCE_NP_ENTITLEMENT_ACCESS_PACKAGE_TYPE_PSAC;
 	}
 
 	if (hitNum != NULL)
 	{
-		*hitNum = listNum < addcont_count ? listNum : addcont_count;
+		*hitNum = list_count;
 	}
 
 	return 0;
@@ -292,13 +373,50 @@ int32_t dlcldr_sceNpEntitlementAccessGetAddcontEntitlementInfo(
 {
 	for (int i = 0; i < addcont_count; i++)
 	{
-		if (strcmp(entitlementLabel->data, addcontInfo[i].entitlementLabel.data) == 0)
+		if (memcmp(entitlementLabel->data, addcontInfo[i].entitlementLabel, 16) == 0)
 		{
-			strncpy(info->entitlementLabel.data, addcontInfo[i].entitlementLabel.data, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE);
+			strncpy(info->entitlementLabel.data, addcontInfo[i].entitlementLabel, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE);
 			info->downloadStatus = addcontInfo[i].status;
 			info->packageType = SCE_NP_ENTITLEMENT_ACCESS_PACKAGE_TYPE_PSAC;
 			return 0;
 		}
+	}
+
+	return SCE_APP_CONTENT_ERROR_DRM_NO_ENTITLEMENT;
+}
+
+int32_t dlcldr_sceAppContentGetEntitlementKey(
+	SceNpServiceLabel serviceLabel,
+	const SceNpUnifiedEntitlementLabel *entitlementLabel,
+	SceAppContentEntitlementKey *key)
+{
+	if (DEBUG_MODE != 0)
+	{
+		char log_buf[250];
+		snprintf(log_buf, 250, "[dlcldr] dlcldr_sceAppContentGetEntitlementKey called for %s", entitlementLabel->data);
+		Log(log_buf);
+	}
+
+	for (int i = 0; i < addcont_count; i++)
+	{
+		if (memcmp(entitlementLabel->data, addcontInfo[i].entitlementLabel, 16) == 0)
+		{
+			if (DEBUG_MODE != 0)
+			{
+				char log_buf[250];
+				snprintf(log_buf, 250, "[dlcldr] dlcldr_sceAppContentGetEntitlementKey found key for %s", entitlementLabel->data);
+				Log(log_buf);
+			}
+			memcpy(key->data, addcontInfo[i].key, SCE_APP_CONTENT_ENTITLEMENT_KEY_SIZE);
+			return 0;
+		}
+	}
+
+	if (DEBUG_MODE != 0)
+	{
+		char log_buf[250];
+		snprintf(log_buf, 250, "[dlcldr] dlcldr_sceAppContentGetEntitlementKey did not find key for %s, returning SCE_APP_CONTENT_ERROR_DRM_NO_ENTITLEMENT", entitlementLabel->data);
+		Log(log_buf);
 	}
 
 	return SCE_APP_CONTENT_ERROR_DRM_NO_ENTITLEMENT;
@@ -309,17 +427,7 @@ int32_t dlcldr_sceNpEntitlementAccessGetEntitlementKey(
 	const SceNpUnifiedEntitlementLabel *entitlementLabel,
 	SceNpEntitlementAccessEntitlementKey *key)
 {
-	memset(key->data, 0, SCE_NP_ENTITLEMENT_ACCESS_ENTITLEMENT_KEY_SIZE);
-	return 0;
-}
-
-int32_t dlcldr_sceAppContentGetEntitlementKey(
-	SceNpServiceLabel serviceLabel,
-	const SceNpUnifiedEntitlementLabel *entitlementLabel,
-	SceAppContentEntitlementKey *key)
-{
-	memset(key->data, 0, SCE_APP_CONTENT_ENTITLEMENT_KEY_SIZE);
-	return 0;
+	return dlcldr_sceAppContentGetEntitlementKey(serviceLabel, entitlementLabel, key);
 }
 
 int32_t dlcldr_sceAppContentAddcontDelete(
@@ -334,17 +442,30 @@ int32_t dlcldr_sceAppContentAddcontMount(
 	const SceNpUnifiedEntitlementLabel *entitlementLabel,
 	SceAppContentMountPoint *mountPoint)
 {
+	if (DEBUG_MODE != 0)
+	{
+		char log_buf[250];
+		snprintf(log_buf, 250, "[dlcldr] dlcldr_sceAppContentAddcontMount called for %s", entitlementLabel->data);
+		Log(log_buf);
+	}
+
 	for (int i = 0; i < addcont_count; i++)
 	{
-		if (strcmp(entitlementLabel->data, addcontInfo[i].entitlementLabel.data) == 0)
+		if (memcmp(entitlementLabel->data, addcontInfo[i].entitlementLabel, 16) == 0)
 		{
 			if (addcontInfo[i].status != SCE_APP_CONTENT_ADDCONT_DOWNLOAD_STATUS_INSTALLED)
 			{
+				if (DEBUG_MODE != 0)
+				{
+					char log_buf[250];
+					snprintf(log_buf, 250, "[dlcldr] dlcldr_sceAppContentAddcontMount failed for %s, not installed", entitlementLabel->data);
+					Log(log_buf);
+				}
 				return SCE_APP_CONTENT_ERROR_NOT_MOUNTED;
 			}
-			
+
 			char new_mount_point[SCE_APP_CONTENT_MOUNTPOINT_DATA_MAXSIZE];
-			
+
 			if (i < 10)
 			{
 				// to avoid changing the naming convention
@@ -357,11 +478,21 @@ int32_t dlcldr_sceAppContentAddcontMount(
 
 			strncpy(mountPoint->data, new_mount_point, SCE_APP_CONTENT_MOUNTPOINT_DATA_MAXSIZE);
 
-			// char log_buf[250];
-			// snprintf(log_buf, 250, "Mount success for %s (path: %s)\n", entitlementLabel->data, mountPoint->data);
-			// append_to_log(log_buf);
+			if (DEBUG_MODE != 0)
+			{
+				char log_buf[250];
+				snprintf(log_buf, 250, "[dlcldr] dlcldr_sceAppContentAddcontMount mounted %s at %s", entitlementLabel->data, new_mount_point);
+				Log(log_buf);
+			}
 			return 0;
 		}
+	}
+
+	if (DEBUG_MODE != 0)
+	{
+		char log_buf[250];
+		snprintf(log_buf, 250, "[dlcldr] dlcldr_sceAppContentAddcontMount failed for %s, not found", entitlementLabel->data);
+		Log(log_buf);
 	}
 
 	return SCE_APP_CONTENT_ERROR_DRM_NO_ENTITLEMENT;
@@ -379,6 +510,30 @@ int32_t dlcldr_sceAppContentGetPftFlag(
 	*pftFlag = SCE_APP_CONTENT_PFT_FLAG_OFF;
 	return 0;
 }
+
+// typedef enum SceNpState
+// {
+// 	SCE_NP_STATE_UNKNOWN = 0,
+// 	SCE_NP_STATE_SIGNED_OUT,
+// 	SCE_NP_STATE_SIGNED_IN
+// } SceNpState;
+// int sceNpGetState(
+// 		SceUserServiceUserId userId,
+// 		SceNpState *state);
+// int (*sceNpGetState)(SceUserServiceUserId userId, SceNpState *state) = NULL;
+
+// gYOLMIKifpk
+// int32_t dlcldr_sceNpGetState(
+// 	SceUserServiceUserId userId,
+// 	SceNpState *state)
+// {
+// 	*state = SCE_NP_STATE_SIGNED_IN;
+// 	if (DEBUG_MODE != 0)
+// 	{
+// 		Log("[dlcldr] sceNpGetState faked signed_in");
+// 	}
+// 	return 0;
+// }
 
 // int32_t dlcldr_sceAppContentAppParamGetInt(
 // 	SceAppContentAppParamId paramId,

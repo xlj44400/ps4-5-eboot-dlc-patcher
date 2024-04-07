@@ -3,6 +3,8 @@
 #define SCE_KERNEL_O_WRONLY 0x0001
 #define SCE_KERNEL_O_CREAT 0x0200
 #define SCE_KERNEL_O_APPEND 0x0008
+#define SCE_KERNEL_O_RDONLY 0x0000
+#define SCE_KERNEL_O_DIRECTORY 0x00020000
 
 // #define S_IRWXU 0000700 // RWX mask for owner
 // #define S_IRUSR 0000400 // R for owner
@@ -149,7 +151,7 @@ typedef uint32_t SceAppContentAddcontDownloadStatus;
 typedef uint32_t SceAppContentTemporaryDataOption;
 
 // application parameter id
-
+#define SCE_APP_CONTENT_APPPARAM_ID_SKU_FLAG (0)
 // user defined parameter 1
 #define SCE_APP_CONTENT_APPPARAM_ID_USER_DEFINED_PARAM_1 (1)
 // user defined parameter 2
@@ -158,6 +160,10 @@ typedef uint32_t SceAppContentTemporaryDataOption;
 #define SCE_APP_CONTENT_APPPARAM_ID_USER_DEFINED_PARAM_3 (3)
 // user defined parameter 4
 #define SCE_APP_CONTENT_APPPARAM_ID_USER_DEFINED_PARAM_4 (4)
+
+#define SCE_APP_CONTENT_APPPARAM_SKU_FLAG_TRIAL (1)
+
+#define SCE_APP_CONTENT_APPPARAM_SKU_FLAG_FULL (3)
 
 // parameter size
 
@@ -244,16 +250,34 @@ typedef uint32_t SceAppContentPftFlag;
 // Play First Trial application
 #define SCE_APP_CONTENT_PFT_FLAG_ON (1)
 
-int append_to_log(const char *str);
+typedef int SceUserServiceUserId;
+
+int append_to_log_file(const char *str);
 
 static uint64_t getNanoTime();
 static uint64_t timespec_to_nano(const SceKernelTimespec *timespec);
 void intToStr(int num, char *str);
-void ptrToHexStr(void *ptr, char *str);
+void Log(const char *str);
+void KernelPrintOut(const char *str);
+int copy_save_if_needed();
+
+typedef struct
+{
+	char entitlementLabel[SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE];
+	uint8_t status; // SceAppContentAddcontDownloadStatus
+	char key[SCE_APP_CONTENT_ENTITLEMENT_KEY_SIZE];
+} dlcldr_struct;
 
 int32_t sceAppContentInitialize(
 	SceAppContentInitParam *initParam,
 	SceAppContentBootParam *bootParam);
+int32_t sceAppContentAppParamGetInt(
+	SceAppContentAppParamId paramId,
+	int32_t *value);
+
+// typedef struct stat SceKernelStat;
+// int sceKernelStat(const char *path, SceKernelStat *sb);
+
 // int32_t dlcldr_sceAppContentAppParamGetInt(
 // 	SceAppContentAppParamId paramId,
 // 	int32_t *value);

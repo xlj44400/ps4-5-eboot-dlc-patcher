@@ -1,58 +1,27 @@
-# ps4-5-eboot-dlc-patcher
+# ps4-eboot-dlc-patcher
 
-## This project is very much in an experimental stage. Dont expect it to be reliable.
+This is intended to be used on ps5 where dlc fpkgs dont work. It automatically patches the eboot (or other executables) to use custom prx which replaces calls to the `libSceAppContent` library to load dlcs from the base pkg.
 
+## Tools
+- [selfutil-patched](https://github.com/xSpecialFoodx/SelfUtil-Patched) (Make sure you use this, as this is the only reliable version)
+- For repacking and extracting the update you can use either [Modded Warfare's Patch Builder](https://www.mediafire.com/file/xw0zn2e0rjaf5k7/Patch_Builder_v1.3.3.zip/file) or if you prefer the cli you can also use [PS4-Fake-PKG-Tools-3.87](https://github.com/CyB1K/PS4-Fake-PKG-Tools-3.87)
 
-Patches the eboot to load a custom .prx  containing the dlc content ids, and all functions from `libSceAppContent`,
-emulating some of the functions from it:
-```
-sceAppContentGetAddcontInfoList
-sceAppContentGetAddcontInfo
-sceAppContentGetEntitlementKey
-sceAppContentAddcontDelete
-sceAppContentAddcontMount
-sceAppContentAddcontUnmount
-sceAppContentGetPftFlag
-```
-The other functions are "proxied" to the real `libSceAppContent` library.
-Some of the newer cross-gen games use the `libSceNpEntitlementAccess` library, this is currently not emulated, however i plan at least partially support it.
+## Instructions
+1. Extract the update pkg of the game, or if the game is base only or merged base+update, then extract the `Sc0` and `sce_sys` along with the executables to patch. The executables you need will most likely be `eboot.bin` and other `.elf` files (most games only use the `eboot.bin`) (it could also be `.prx`, but ignore `.prx` files in the `sce_module` folder)
+1. Run selfutil on the executables to decrypt them.
+1. For the easiest usage copy all the dlc pkgs and executables into a folder then highlight and drag them onto the `ps4-eboot-dlc-patcher` exe. (You can also drag just the dlc pkgs onto it and enter the executables paths in the menu, or enter all paths as cli arguments)
+1. Select patch executable(s) and wait for the patcher to do its thing
+1. At the end the patcher will show a list of paths for each dlc with extra data, you'll need to extract the contents of the respective dlc's Image0 into the given folder inside the update's Image0.
+1. The patcher outputs the patched executables in the same folder as the patcher exe/eboot_patcher_output, copy back the executables into the update folder. Make sure you rename the file back to what it was before you ran selfutil since it changes the extension to .elf! The dlcldr.prx always goes into the root of Image0 of the update, even if the exeutable patches wasnt in that folder.
+1. Repack the update
 
-This is made for ps4 fpkgs, running on ps5, where dlc fpkgs dont work, although i guess it might also be useful for games where the main game is unlocked with dlcs so it can all be in one pkg (like some telltale games).
+## Limitations
+- Right now only games that rely on `libSceAppContent` is supported, a some newer cross-gen games use `libSceNpEntitlementAccess`, if this is the case the patcher will give an error, support for this library is doable i just havent gotten around to it yet.
 
-
-
-- Requires IDA Pro 7.5 with https://github.com/SocraticBliss/ps4_module_loader plugin installed and python version 3.9/3.10 (dont copy in the python folder)
-- Useful for extracting and repacking pkgs: 
-  - https://www.mediafire.com/file/xw0zn2e0rjaf5k7/Patch_Builder_v1.3.3.zip/file
-  - https://www.psxhax.com/threads/ps4-patch-builder-for-building-modded-update-pkgs-by-modded-warfare.7112/
-- selfutil
-  - https://github.com/xSpecialFoodx/SelfUtil-Patched
-
-
-## Usage:
-1. Extract eboot.bin from update (or base pkg if you dont have an update) and un-fself it.
-1. Load eboot.elf in IDA (Make sure you select `PS4 - Main Module - ASLR` type when opening, if you dont see this option the eboot.bin might be an fself still)
-1. Wait for analysis to finish. The bar at the top should be mostly blue (Regular functions)
-1. Go to File->Script file... and select the python script from this repo.
-1. Follow the instructions, if you see `Patching complete` you're good.
-1. Extract all files from the update pkg.
-1. Replace the eboot.bin from the extracted update pkg's Image0 folder with our patched one (rename to eboot.bin), and place `dlcldr.prx` next to it.
-1. During the patching process you were asked to input a list of content ids. For each of the content ids you entered in the box for `DLCs with extra data`, you'll need to create a new folder in Image0 named `dlcXX` where XX is the index from 0, in the same order you entered in the textbox. In this new folder youll need to copy the contents of the Image0 folder of the respective extracted dlc. See below for example:
-    ```
-    GEDLC00000000001 -> dlc00/
-    TRAUMAPACK000000 -> dlc01/
-    GEPREDLC00000001 -> dlc02/
-    ```
-1. Repack update pkg and you're done
-
-## Notes:
-- You can use Modded Warfare's Patch Builder to get the content id, itll look something like this:
-  ```
-  Content ID: UP0102-CUSA18017_00-GEDLC00000000001
-  ```
-  You need the last bit from it `GEDLC00000000001`
-
-- Patch Builder also shows whether a dlc has extra data or not, or you can also see by checking if the dlc pkg has an Image0 folder or not.
-
-
-Credits to [jocover](https://github.com/jocover) for discovering the functions responsible for loading dlcs.
+## Credits and thanks
+- The biggest thanks to [jocover](https://github.com/jocover) who came up with the idea, without whom i never would've learned this was possible.
+- The [OpenOrbis team](https://github.com/OpenOrbis) for creating [the tools that were used to compile the prx](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain).
+- [SocraticBliss](https://github.com/SocraticBliss) for creating [ps4_module_loader](https://github.com/SocraticBliss/ps4_module_loader/).
+- [maxton](https://github.com/maxton) for creating [LibOrbisPkg](https://github.com/OpenOrbis/LibOrbisPkg) and the [OpenOrbis team](https://github.com/OpenOrbis) for maintaining it.
+- [Iced](https://github.com/icedland/iced)
+- [spectre.console](https://github.com/spectreconsole/spectre.console)

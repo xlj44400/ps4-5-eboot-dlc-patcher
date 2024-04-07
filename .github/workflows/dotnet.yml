@@ -1,0 +1,87 @@
+name: Build main dotnet app
+
+on:
+  push:
+    paths:
+      - 'main_src/**'
+  workflow_dispatch:
+
+env:
+  OUTPUT_FILE_BASE_NAME: ps4-eboot-dlc-patcher
+  
+permissions:
+  contents: write
+
+jobs:
+  build_and_release:
+    strategy:
+      matrix:
+        include:
+          - architecture: 'win-x64'
+            runner: 'windows-latest'
+            file_extension: '.exe'
+          - architecture: 'win-arm64'
+            runner: 'windows-latest'
+            file_extension: '.exe'
+          - architecture: 'linux-x64'
+            runner: 'ubuntu-latest'
+            file_extension: ''
+          - architecture: 'linux-arm64'
+            runner: 'ubuntu-latest'
+            file_extension: ''
+          - architecture: 'framework-dependent'
+            runner: 'ubuntu-latest'
+            file_extension: '.zip'
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+
+    - name: Install deps for linux cross arch compile
+      if: matrix.architecture == 'linux-arm64'
+      run: |
+        sudo dpkg --add-architecture arm64
+        sudo bash -c 'cat > /etc/apt/sources.list.d/arm64.list <<EOF
+        deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy main restricted
+        deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-updates main restricted
+        deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-backports main restricted universe multiverse
+        EOF'
+        sudo sed -i -e 's/deb http/deb [arch=amd64] http/g' /etc/apt/sources.list
+        sudo sed -i -e 's/deb mirror/deb [arch=amd64] mirror/g' /etc/apt/sources.list
+        sudo apt-get update
+        sudo apt-get install -y clang llvm binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu zlib1g-dev:arm64 openssl
+
+    - name: dotnet restore
+      run: dotnet restore ./main_src
+
+    - name: Publish aot compiled
+      if: matrix.architecture != 'framework-dependent'
+      run: dotnet publish ./main_src -r ${{ matrix.architecture }} -p:PublishAot=true -p:DebugType=None -p:DebugSymbols=false -p:StripSymbols=true -p:TrimmerRemoveSymbols=true -p:DebuggerSupport=false -p:EnableUnsafeBinaryFormatterSerialization=false -p:EnableUnsafeUTF7Encoding=false -p:EventSourceSupport=false -p:InvariantGlobalization=true -p:StackTraceSupport=false -p:OptimizationPreference=Speed --configuration Release --output ./publish/${{ matrix.architecture }}
+    
+    - name: Publish framework-dependent
+      if: matrix.architecture == 'framework-dependent'
+      run: |
+        dotnet publish ./main_src -p:DebugType=None -p:DebugSymbols=false --configuration Release --output ./publish/${{ matrix.architecture }}
+        cd ./publish/${{ matrix.architecture }}
+        zip -r ${{ env.OUTPUT_FILE_BASE_NAME }}.zip ./*
+
+    - name: Rename output file
+      run: mv ./publish/${{ matrix.architecture }}/${{ env.OUTPUT_FILE_BASE_NAME }}${{ matrix.file_extension }} ./publish/${{ matrix.architecture }}/${{ env.OUTPUT_FILE_BASE_NAME }}-${{ matrix.architecture }}${{ matrix.file_extension }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: publish-${{ matrix.architecture }}
+        path: ./publish/${{ matrix.architecture }}/${{ env.OUTPUT_FILE_BASE_NAME }}-${{ matrix.architecture }}${{ matrix.file_extension }}
+
+    - name: Release draft
+      uses: softprops/action-gh-release@v2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        draft: true
+        files: ./publish/${{ matrix.architecture }}/${{ env.OUTPUT_FILE_BASE_NAME }}-${{ matrix.architecture }}${{ matrix.file_extension }}
