@@ -8,6 +8,11 @@ This is intended to be used on ps5 where dlc fpkgs dont work. It automatically p
 - [selfutil-patched](https://github.com/xSpecialFoodx/SelfUtil-Patched) (Make sure you use this, as this is the only reliable version)
 - For repacking and extracting the update you can use either [Modded Warfare's Patch Builder](https://www.mediafire.com/file/xw0zn2e0rjaf5k7/Patch_Builder_v1.3.3.zip/file) or if you prefer the cli you can also use [PS4-Fake-PKG-Tools-3.87](https://github.com/CyB1K/PS4-Fake-PKG-Tools-3.87)
 
+## Download
+- [Windows 64-bit](https://github.com/idlesauce/ps4-eboot-dlc-patcher/releases/latest/download/ps4-eboot-dlc-patcher-win-x64.exe)
+
+Other os and arch binaries are available [here](https://github.com/idlesauce/ps4-eboot-dlc-patcher/releases/latest), along with a `framework-dependent` version which is cross-platform, but requires the dotnet 8 runtime.
+  
 ## Instructions
 1. Extract the update pkg of the game, or if the game is base only or merged base+update, then extract the `Sc0` and `sce_sys` along with the executables to patch. The executables you need will most likely be `eboot.bin` and other `.elf` files (most games only use the `eboot.bin`) (it could also be `.prx`, but ignore `.prx` files in the `sce_module` folder)
 1. Run selfutil on the executables to decrypt them.
