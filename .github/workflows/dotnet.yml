@@ -2,6 +2,8 @@ name: Build main dotnet app
 
 on:
   push:
+    branches:
+      - main
     paths:
       - 'main_src/**'
   workflow_dispatch:
