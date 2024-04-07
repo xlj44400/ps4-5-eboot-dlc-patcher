@@ -2,6 +2,8 @@
 
 This is intended to be used on ps5 where dlc fpkgs dont work. It automatically patches the eboot (or other executables) to use custom prx which replaces calls to the `libSceAppContent` library to load dlcs from the base pkg.
 
+![showcase](https://github.com/idlesauce/ps4-eboot-dlc-patcher/assets/148508202/87d5fb21-f442-45b5-bba9-d4cff2e5de2d)
+
 ## Tools
 - [selfutil-patched](https://github.com/xSpecialFoodx/SelfUtil-Patched) (Make sure you use this, as this is the only reliable version)
 - For repacking and extracting the update you can use either [Modded Warfare's Patch Builder](https://www.mediafire.com/file/xw0zn2e0rjaf5k7/Patch_Builder_v1.3.3.zip/file) or if you prefer the cli you can also use [PS4-Fake-PKG-Tools-3.87](https://github.com/CyB1K/PS4-Fake-PKG-Tools-3.87)
