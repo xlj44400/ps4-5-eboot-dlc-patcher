@@ -90,9 +90,10 @@ internal static class InExecutableLoaderStuff
 
         var progress = new ConsoleUi.ProgressBar("Analyzing code segment");
 
-        for (int i = 0; i < (int)binary.E_SEGMENTS[0].MEM_SIZE; i++)
+        ulong memAddrPlusMemSize = codeSegment.MEM_ADDR + codeSegment.MEM_SIZE;
+        while(decoder.IP < memAddrPlusMemSize)
         {
-            int percent = (int)Math.Round((double)((double)i / (double)binary.E_SEGMENTS[0].MEM_SIZE) * 100, 0);
+            int percent = (int)Math.Round((double)((double)(decoder.IP - codeSegment.MEM_ADDR) / (double)codeSegment.MEM_SIZE) * 100, 0);
             if (percent != lastPercentPrinted)
             {
                 await progress.Update(percent);
