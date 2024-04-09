@@ -76,13 +76,9 @@ internal static class InExecutableLoaderStuff
         List<(string symbol, ulong? funcPtr, List<Instruction> xrefs)> symbolsWithXrefs = symbolsThatRequireNewFunctions.Concat(SymbolsThatArePatchedInPlace).Select(x => (x, binary.Relocations.SingleOrDefault(y => y.SYMBOL is not null && y.SYMBOL.StartsWith(Ps4ModuleLoader.Utils.CalculateNidForSymbol(x)))?.REAL_FUNCTION_ADDRESS, new List<Instruction>())).ToList();
 
         var codeSegment = binary.E_SEGMENTS.First(x => x.GetName() == "CODE"); // throws if not found
-        // load in entire code segment into memory (much faster to analyze)
-        // TODO: add switch to read from disk
-        byte[] codeSegmentBytes = new byte[codeSegment.MEM_SIZE];
-        fs.Seek((long)codeSegment.OFFSET, SeekOrigin.Begin);
-        fs.Read(codeSegmentBytes, 0, codeSegmentBytes.Length);
 
-        var reader = new ByteArrayCodeReader(codeSegmentBytes);
+        var reader = new StreamCodeReader(fs);
+        fs.Seek((long)codeSegment.OFFSET, SeekOrigin.Begin);
 
         var decoder = Iced.Intel.Decoder.Create(64, reader);
         decoder.IP = codeSegment.MEM_ADDR;
