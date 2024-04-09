@@ -199,7 +199,7 @@ internal class Program
 
                     if (endChoice == copyDlcDataIntoFoldersOption)
                     {
-                        if (dlcInfos.Any(x=>string.IsNullOrWhiteSpace(x.Path)))
+                        if (dlcInfos.Any(x => string.IsNullOrWhiteSpace(x.Path)))
                         {
                             ConsoleUi.LogError("Some DLCs dont have a path set");
                             continue;
@@ -468,7 +468,7 @@ internal class Program
         // start of next segment (-1)
         ulong codeScanEndRealAddr = binary.E_SEGMENTS.OrderBy(x => x.OFFSET).First(x => x.MEM_ADDR >= codeSegment.MEM_ADDR + codeSegment.MEM_SIZE).OFFSET - 1;
         // sanity check
-        if (codeScanEndRealAddr < codeSegment.OFFSET + codeSegment.FILE_SIZE)
+        if (codeScanEndRealAddr + 1 < codeSegment.OFFSET + codeSegment.FILE_SIZE)
         { throw new Exception("Sanity check failed: codeScanEndRealAddr < codeScanStartRealAddr"); }
 
         ulong freeSpaceAtEndOfCodeSegment = 0;
