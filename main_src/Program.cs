@@ -482,12 +482,12 @@ internal class Program
             fileStream.Seek(-2, SeekOrigin.Current);
         }
 
-        if (freeSpaceAtEndOfCodeSegment == 0)
+        if (freeSpaceAtEndOfCodeSegment < 3)
         {
             throw new Exception("No free space found at the end of the code segment");
         }
 
-        ulong fileOffsetOfFreeSpaceStart = codeScanEndRealAddr - freeSpaceAtEndOfCodeSegment + 1;
+        ulong fileOffsetOfFreeSpaceStart = codeScanEndRealAddr - freeSpaceAtEndOfCodeSegment + 2;
 
         return ((int)fileOffsetOfFreeSpaceStart, (int)codeScanEndRealAddr);
     }
