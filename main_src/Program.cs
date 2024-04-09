@@ -12,6 +12,9 @@ internal class Program
         AppDomain.CurrentDomain.UnhandledException += (e, a) =>
         {
             ConsoleUi.LogError(((Exception)a.ExceptionObject).Message);
+            AnsiConsole.WriteLine("Press any key to exit...");
+            Console.ReadKey();
+            Environment.Exit(1);
         };
 
         var panel = new Panel(new Markup("[b]PS4 EBOOT DLC Patcher[/]").Centered());
@@ -349,12 +352,6 @@ internal class Program
 
             var infoListPatch = Patches.FirstOrDefault(x => x.description == "sceAppContentGetAddcontInfoList");
 
-            var freeSpaceStartHexString = $"0x{freeSpaceAtEndOfCodeSegment.fileStartAddressOfZeroes:X}";
-            var infoListPatchOffset = $"0x{infoListPatch.offset:X}";
-            var infoListPatchOffset2 = $"0x{(infoListPatch.offset - segment.OFFSET):X}";
-            var segmentMemSize = $"0x{segment.MEM_SIZE:X}";
-
-
             var allMemSize = Patches.Where(x => (long)((long)x.offset - (long)segment.OFFSET) > (long)segment.MEM_SIZE && (long)x.offset < (long)nextSegmentFileStart);
             ulong? maxMemSize = null;
             if (allMemSize.Count() > 0)
@@ -374,7 +371,7 @@ internal class Program
             {
                 byte[] newMemSizeBytes = new byte[8];
                 BinaryPrimitives.WriteUInt64LittleEndian(newMemSizeBytes, maxMemSize.Value);
-                Patches.Add(((ulong)segment.PHT_MEM_SIZE_FIELD_FILE_OFFSET, newMemSizeBytes, $"Increase MEM_SIZE of {segment.GetName()} segment from {segmentMemSize:X} to {maxMemSize:X}"));
+                Patches.Add(((ulong)segment.PHT_MEM_SIZE_FIELD_FILE_OFFSET, newMemSizeBytes, $"Increase MEM_SIZE of {segment.GetName()} segment from {segment.MEM_SIZE:X} to {maxMemSize:X}"));
             }
 
             if (maxFileSize is not null && maxFileSize > segment.FILE_SIZE)
