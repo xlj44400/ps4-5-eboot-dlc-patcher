@@ -15,8 +15,9 @@ public class DlcInfo
     public string EntitlementLabel { get; set; }
     public DlcType Type { get; set; }
     public byte[]? EntitlementKey { get; set; }
+    public string? Path { get; set; }
 
-    public DlcInfo(string entitlementLabel, DlcType type, byte[]? entitlementKey)
+    public DlcInfo(string entitlementLabel, DlcType type, byte[]? entitlementKey, string? path = null)
     {
         if (string.IsNullOrWhiteSpace(entitlementLabel))
         {
@@ -37,6 +38,7 @@ public class DlcInfo
         }
 
         EntitlementKey = entitlementKey ?? new byte[16];
+        Path = path;
     }
 
     public string ToEncodedString()
@@ -143,7 +145,7 @@ public class DlcInfo
 
         var type = pkg.Header.content_type == ContentType.AC ? DlcType.PSAC : DlcType.PSAL;
 
-        return new DlcInfo(contentId, type, entitlementKey);
+        return new DlcInfo(contentId, type, entitlementKey: entitlementKey, path: path);
     }
 
     static byte[] GetLicenseDatByteArrayFromPkg(LibOrbisPkg.PKG.Pkg pkg, MemoryMappedFile pkgMemoryMappedFile)

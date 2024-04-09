@@ -51,6 +51,13 @@ internal class ConsoleUi
         }
         return lines;
     }
+
+    public static string? Input(string message)
+    {
+        AnsiConsole.MarkupLine($"[yellow]{message}[/]");
+        return Console.ReadLine();
+    }
+
     public class ProgressBar
     {
         private TaskCompletionSource<double> progressBarTask = new();
@@ -63,29 +70,29 @@ internal class ConsoleUi
                 .AutoRefresh(true)
                 .Columns(new TaskDescriptionColumn(), new ProgressBarColumn(), new PercentageColumn(), new RemainingTimeColumn(), new SpinnerColumn())
                 .StartAsync(async ctx =>
-            {
-                var task1 = ctx.AddTask(task);
-                task1.MaxValue = 100;
-                isFinished = ctx.IsFinished;
-                while (!isFinished)
                 {
-                    var newProgress = await progressBarTask.Task;
+                    var task1 = ctx.AddTask(task);
+                    task1.MaxValue = 100;
+                    isFinished = ctx.IsFinished;
+                    while (!isFinished)
+                    {
+                        var newProgress = await progressBarTask.Task;
 
-                    task1.Value = newProgress;
+                        task1.Value = newProgress;
+
+                        ctx.Refresh();
+                        isFinished = ctx.IsFinished;
+                        if (!isFinished)
+                        {
+                            progressBarTask = new TaskCompletionSource<double>();
+                            progressUpdated.SetResult();
+                        }
+                    }
 
                     ctx.Refresh();
-                    isFinished = ctx.IsFinished;
-                    if (!isFinished)
-                    {
-                        progressBarTask = new TaskCompletionSource<double>();
-                        progressUpdated.SetResult();
-                    }
-                }
-
-                ctx.Refresh();
-                progressBarTask = new TaskCompletionSource<double>();
-                progressUpdated.SetResult();
-            });
+                    progressBarTask = new TaskCompletionSource<double>();
+                    progressUpdated.SetResult();
+                });
         }
 
         /// <summary>

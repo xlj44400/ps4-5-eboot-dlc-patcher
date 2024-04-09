@@ -1,6 +1,9 @@
-﻿using ps4_eboot_dlc_patcher.Ps4ModuleLoader;
+﻿using LibOrbisPkg.PFS;
+using LibOrbisPkg.PKG;
+using ps4_eboot_dlc_patcher.Ps4ModuleLoader;
 using Spectre.Console;
 using System.Buffers.Binary;
+using System.IO.MemoryMappedFiles;
 using System.Text;
 
 namespace ps4_eboot_dlc_patcher;
@@ -26,11 +29,12 @@ internal class Program
         List<string> executables = new();
         foreach (var arg in args)
         {
-            if (File.Exists(arg) && Path.GetExtension(arg) == ".pkg")
+
+            if (File.Exists(arg) && Path.GetExtension(arg).Equals(".pkg", StringComparison.InvariantCultureIgnoreCase))
             {
                 dlcPkgs.Add(arg);
             }
-            else if (File.Exists(arg) && arg.EndsWith(".elf", StringComparison.OrdinalIgnoreCase))
+            else if (File.Exists(arg) && Path.GetExtension(arg).Equals(".elf", StringComparison.InvariantCultureIgnoreCase))
             {
                 executables.Add(arg);
             }
@@ -101,6 +105,7 @@ internal class Program
             var choice2 = "Print DLC infos";
             var choice3 = "Enter more dlc infos";
             var choice4 = "Enter more executables";
+            var choice6 = "Extract Image0 of PKGs";
             var choice5 = "Exit";
 
             List<string> kwuafh =
@@ -109,6 +114,7 @@ internal class Program
                 choice2,
                 choice3,
                 choice4,
+                choice6,
                 choice5
             ];
 
@@ -175,16 +181,68 @@ internal class Program
                 ConsoleUi.LogInfo($"Output directory: {outDir}");
                 ConsoleUi.LogSuccess("Finished patching executables");
 
-                ConsoleUi.WriteLine("Copy data from dlcs in this order:");
+                string copyDlcDataIntoFoldersOption = "Extract w/ extra data dlcs into folders";
+                string showDlcInfoOption = "Show DLC info";
+                string exitOption = "Exit";
 
-                int i = 0;
-                foreach (var dlcInfo in dlcInfos.Where(x => x.Type == DlcInfo.DlcType.PSAC))
+                string[] endOptions = [copyDlcDataIntoFoldersOption, showDlcInfoOption, exitOption];
+
+                while (true)
                 {
-                    ConsoleUi.WriteLine($"{dlcInfo.EntitlementLabel}/Image0/* -> CUSAxxxxx-patch/Image0/dlc{i:D2}/");
-                    i++;
+                    var endChoice = AnsiConsole.Prompt(
+                        new SelectionPrompt<string>()
+                            .Title("Whats next?")
+                            .PageSize(10)
+                            .AddChoices(
+                                endOptions
+                            ));
+
+                    if (endChoice == copyDlcDataIntoFoldersOption)
+                    {
+                        if (dlcInfos.Any(x=>string.IsNullOrWhiteSpace(x.Path)))
+                        {
+                            ConsoleUi.LogError("Some DLCs dont have a path set");
+                            continue;
+                        }
+
+                        var updateImage0Path = ConsoleUi.Input("Enter path to update Image0 folder, where dlcXX folders will be created...");
+                        if (!Directory.Exists(updateImage0Path))
+                        {
+                            ConsoleUi.LogError("Path does not exist");
+                            continue;
+                        }
+
+                        int i = 0;
+
+                        foreach (var dlcInfo in dlcInfos.Where(x => x.Type == DlcInfo.DlcType.PSAC))
+                        {
+                            ConsoleUi.LogInfo($"Extacting {dlcInfo.EntitlementLabel} to {updateImage0Path}/dlc{i:D2}...");
+                            var extractOutDir = Path.Combine(updateImage0Path, $"dlc{i:D2}");
+                            ExtractPkgImage0ToPath(dlcInfo.Path!, extractOutDir);
+                            i++;
+                        }
+
+                        ConsoleUi.LogSuccess("Finished extracting dlcs");
+                        break;
+                    }
+                    else if (endChoice == showDlcInfoOption)
+                    {
+                        ConsoleUi.WriteLine("Copy data from dlcs in this order:");
+
+                        int i = 0;
+                        foreach (var dlcInfo in dlcInfos.Where(x => x.Type == DlcInfo.DlcType.PSAC))
+                        {
+                            ConsoleUi.WriteLine($"{dlcInfo.EntitlementLabel}/Image0/* -> CUSAxxxxx-patch/Image0/dlc{i:D2}/");
+                            i++;
+                        }
+                    }
+                    else if (endChoice == exitOption)
+                    {
+                        break;
+                    }
+
                 }
 
-                // press any key to exit
                 Console.WriteLine("Press any key to exit");
                 Console.ReadKey();
                 exit = true;
@@ -207,7 +265,24 @@ internal class Program
             else if (menuChoice == choice4)
             {
                 executables.AddRange(ExecutablePathsInput());
+            }
+            else if (menuChoice == choice6)
+            {
+                var outputDir = ConsoleUi.Input("Enter output folder path... (Each dlc will be in its own subdirectory named its entitlement label)");
+                if (!Directory.Exists(outputDir))
+                {
+                    ConsoleUi.LogError("Path does not exist");
+                    continue;
+                }
 
+                foreach (var dlcInfo in dlcInfos.Where(x => x.Type == DlcInfo.DlcType.PSAC))
+                {
+                    ConsoleUi.LogInfo($"Extacting {dlcInfo.EntitlementLabel} to {outputDir}/{dlcInfo.EntitlementLabel}...");
+                    var extractOutDir = Path.Combine(outputDir, dlcInfo.EntitlementLabel);
+                    ExtractPkgImage0ToPath(dlcInfo.Path!, extractOutDir);
+                }
+
+                ConsoleUi.LogSuccess("Finished extracting pkgs");
             }
             else if (menuChoice == choice5)
             {
@@ -467,5 +542,61 @@ internal class Program
         return dlcInfos;
     }
 
+
+    private static void ExtractPkgImage0ToPath(string pkgPath, string outputFolder)
+    {
+        using var pkgFile = MemoryMappedFile.CreateFromFile(pkgPath, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
+        using var fs = pkgFile.CreateViewStream(0, 0, MemoryMappedFileAccess.Read);
+
+        var pkg = new PkgReader(fs).ReadPkg();
+
+        byte[]? ekpfs, data = null, tweak = null;
+
+        ekpfs = pkg.GetEkpfs();
+
+        if (ekpfs is null)
+        {
+            throw new Exception("Unable to get ekpfs (not fpkg?)");
+        }
+
+        if (!pkg.CheckEkpfs(ekpfs) && (data == null || tweak == null))
+        {
+            throw new Exception("Invalid ekpfs (not fpkg?)");
+        }
+
+        using var va = pkgFile.CreateViewAccessor((long)pkg.Header.pfs_image_offset, (long)pkg.Header.pfs_image_size, MemoryMappedFileAccess.Read);
+        var outerPfs = new PfsReader(va, pkg.Header.pfs_flags, ekpfs, tweak, data);
+        using var innerPfsView = new PFSCReader(outerPfs.GetFile("pfs_image.dat").GetView());
+
+        var inner = new PfsReader(innerPfsView);
+
+        var uroot = inner.GetURoot();
+
+        if (!Directory.Exists(outputFolder))
+        {
+            Directory.CreateDirectory(outputFolder);
+        }
+
+        SaveTo(uroot.children, outputFolder);
+    }
+
+    // https://github.com/OpenOrbis/LibOrbisPkg/blob/594021fdc435409f755a6ae0781b65ec6cec846c/PkgEditor/Views/FileView.cs#L129C1-L145C6
+    // TODO: Parallelize this
+    private static void SaveTo(IEnumerable<LibOrbisPkg.PFS.PfsReader.Node> nodes, string path)
+    {
+        foreach (var n in nodes)
+        {
+            if (n is LibOrbisPkg.PFS.PfsReader.File f)
+            {
+                f.Save(Path.Combine(path, n.name), n.size != n.compressed_size);
+            }
+            else if (n is LibOrbisPkg.PFS.PfsReader.Dir d)
+            {
+                var newPath = Path.Combine(path, d.name);
+                Directory.CreateDirectory(newPath);
+                SaveTo(d.children, newPath);
+            }
+        }
+    }
 
 }
