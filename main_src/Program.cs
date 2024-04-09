@@ -217,6 +217,8 @@ internal class Program
     private static readonly string[] errorIfNoneOfTheseAreFound = [
         Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentGetAddcontInfoList"),
         Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentGetAddcontInfo"),
+        Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentGetEntitlementKey"),
+        Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentAddcontMount")
     ];
 
     private static async Task PatchExecutable(string inputPath, string outputDir, List<DlcInfo> dlcList, bool forceInEboot = false)
