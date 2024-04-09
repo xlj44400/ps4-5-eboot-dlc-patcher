@@ -110,10 +110,10 @@ internal static class PrxLoaderStuff
 
         var progress = new ConsoleUi.ProgressBar("Analyzing code segment");
 
-        ulong memAddrPlusMemSize = codeSegment.MEM_ADDR + codeSegment.MEM_SIZE;
-        while (decoder.IP < memAddrPlusMemSize)
+        ulong memAddrPlusFileSize = codeSegment.MEM_ADDR + codeSegment.FILE_SIZE;
+        while (decoder.IP < memAddrPlusFileSize)
         {
-            int percent = (int)Math.Round((double)((double)(decoder.IP - codeSegment.MEM_ADDR) / (double)codeSegment.MEM_SIZE) * 100, 0);
+            int percent = (int)Math.Round((double)((double)(decoder.IP - codeSegment.MEM_ADDR) / (double)codeSegment.FILE_SIZE) * 100, 0);
             if (percent != lastPercentPrinted)
             {
                 lastPercentPrinted = percent;

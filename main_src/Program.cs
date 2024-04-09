@@ -350,38 +350,25 @@ internal class Program
 
             ulong nextSegmentFileStart = binary.E_SEGMENTS.OrderBy(x => x.OFFSET).First(x => x.MEM_ADDR >= segment.MEM_ADDR + segment.MEM_SIZE).OFFSET;
 
-            var infoListPatch = Patches.FirstOrDefault(x => x.description == "sceAppContentGetAddcontInfoList");
+            // list of patches thats offsets are smaller than the next segment start, but bigger than the current segment start
+            var allPatchesInSegment = Patches.Where(x => x.offset > segment.OFFSET && x.offset < nextSegmentFileStart);
 
-            var allMemSize = Patches.Where(x => (long)((long)x.offset - (long)segment.OFFSET) > (long)segment.MEM_SIZE && (long)x.offset < (long)nextSegmentFileStart);
-            ulong? maxMemSize = null;
-            if (allMemSize.Count() > 0)
-            {
-                var tmp = allMemSize.OrderByDescending(x => x.offset).First();
-                maxMemSize = tmp.offset + (ulong)tmp.newBytes.Length - segment.OFFSET;
-            }
-            var allFileSize = Patches.Where(x => (long)((long)x.offset - (long)segment.OFFSET) > (long)segment.FILE_SIZE && (long)x.offset < (long)nextSegmentFileStart);
-            ulong? maxFileSize = null;
-            if (allFileSize.Count() > 0)
-            {
-                var tmp = allFileSize.OrderByDescending(x => x.offset).First();
-                maxFileSize = tmp.offset + (ulong)tmp.newBytes.Length - segment.OFFSET;
-            }
+            var newMaxSegmentSize = allPatchesInSegment.Max(x => x.offset + (ulong)x.newBytes.Length - segment.OFFSET);
 
-            if (maxMemSize is not null && maxMemSize > segment.MEM_SIZE)
-            {
-                byte[] newMemSizeBytes = new byte[8];
-                BinaryPrimitives.WriteUInt64LittleEndian(newMemSizeBytes, maxMemSize.Value);
-                Patches.Add(((ulong)segment.PHT_MEM_SIZE_FIELD_FILE_OFFSET, newMemSizeBytes, $"Increase MEM_SIZE of {segment.GetName()} segment from {segment.MEM_SIZE:X} to {maxMemSize:X}"));
-            }
-
-            if (maxFileSize is not null && maxFileSize > segment.FILE_SIZE)
+            if (newMaxSegmentSize > segment.FILE_SIZE)
             {
                 byte[] newFileSizeBytes = new byte[8];
-                BinaryPrimitives.WriteUInt64LittleEndian(newFileSizeBytes, maxFileSize.Value);
-                Patches.Add(((ulong)segment.PHT_FILE_SIZE_FIELD_FILE_OFFSET, newFileSizeBytes, $"Increase FILE_SIZE of {segment.GetName()} segment from {segment.FILE_SIZE:X} to {maxFileSize:X}"));
+                BinaryPrimitives.WriteUInt64LittleEndian(newFileSizeBytes, newMaxSegmentSize);
+                Patches.Add(((ulong)segment.PHT_FILE_SIZE_FIELD_FILE_OFFSET, newFileSizeBytes, $"Increase FILE_SIZE of {segment.GetName()} segment from {segment.FILE_SIZE:X} to {newMaxSegmentSize:X}"));
+            }
+
+            if (newMaxSegmentSize > segment.MEM_SIZE)
+            {
+                byte[] newMemSizeBytes = new byte[8];
+                BinaryPrimitives.WriteUInt64LittleEndian(newMemSizeBytes, newMaxSegmentSize);
+                Patches.Add(((ulong)segment.PHT_MEM_SIZE_FIELD_FILE_OFFSET, newMemSizeBytes, $"Increase MEM_SIZE of {segment.GetName()} segment from {segment.MEM_SIZE:X} to {newMaxSegmentSize:X}"));
             }
         }
-
 
         // apply patches
         var elfOutputPath = Path.Combine(outputDir, Path.GetFileName(inputPath));
@@ -407,7 +394,7 @@ internal class Program
         // start of next segment (-1)
         ulong codeScanEndRealAddr = binary.E_SEGMENTS.OrderBy(x => x.OFFSET).First(x => x.MEM_ADDR >= codeSegment.MEM_ADDR + codeSegment.MEM_SIZE).OFFSET - 1;
         // sanity check
-        if (codeScanEndRealAddr < codeSegment.OFFSET + codeSegment.MEM_SIZE)
+        if (codeScanEndRealAddr < codeSegment.OFFSET + codeSegment.FILE_SIZE)
         { throw new Exception("Sanity check failed: codeScanEndRealAddr < codeScanStartRealAddr"); }
 
         ulong freeSpaceAtEndOfCodeSegment = 0;
@@ -419,6 +406,11 @@ internal class Program
             freeSpaceAtEndOfCodeSegment++;
             // -2 bc readbyte advances the pos
             fileStream.Seek(-2, SeekOrigin.Current);
+        }
+
+        if (freeSpaceAtEndOfCodeSegment == 0)
+        {
+            throw new Exception("No free space found at the end of the code segment");
         }
 
         ulong fileOffsetOfFreeSpaceStart = codeScanEndRealAddr - freeSpaceAtEndOfCodeSegment + 1;
