@@ -51,7 +51,12 @@ public class Relocation
     public ulong ADDEND { get; private set; }
     public string? SYMBOL { get; private set; }
     public ulong? REAL_FUNCTION_ADDRESS { get; private set; }
-    public ulong? REAL_FUNCTION_ADDRESS_FILE(Ps4Binary bin) => bin.E_SEGMENTS.Min(x=>x.OFFSET) + REAL_FUNCTION_ADDRESS; 
+    public ulong REAL_FUNCTION_ADDRESS_FILE(Ps4Binary bin)
+    {
+        if (REAL_FUNCTION_ADDRESS == null) { throw new Exception("REAL_FUNCTION_ADDRESS is null"); }
+        var segmentContainingRealFunction = bin.E_SEGMENTS.First(x => x.MEM_ADDR <= REAL_FUNCTION_ADDRESS && x.MEM_ADDR + x.MEM_SIZE > REAL_FUNCTION_ADDRESS);
+        return segmentContainingRealFunction.OFFSET + (REAL_FUNCTION_ADDRESS.Value - segmentContainingRealFunction.MEM_ADDR);
+    }
     public string? LIBRARY_NAME { get; private set; }
     public string? MODULE_NAME { get; private set; }
 

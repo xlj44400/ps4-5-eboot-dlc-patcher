@@ -1,5 +1,7 @@
-﻿using LibOrbisPkg.PFS;
+﻿using Iced.Intel;
+using LibOrbisPkg.PFS;
 using LibOrbisPkg.PKG;
+using LibOrbisPkg.Util;
 using ps4_eboot_dlc_patcher.Ps4ModuleLoader;
 using Spectre.Console;
 using System.Buffers.Binary;
@@ -298,6 +300,32 @@ internal class Program
         Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentGetEntitlementKey")
     ];
 
+    private static readonly string[] errorIfAnyOfTheseAreFound_raw_symbol_list = [
+       "sceNpEntitlementAccessGetAddcontEntitlementInfo",
+       "sceNpEntitlementAccessGetAddcontEntitlementInfoIndividual",
+       "sceNpEntitlementAccessGetAddcontEntitlementInfoList",
+       "sceNpEntitlementAccessGetEntitlementKey",
+       "sceNpEntitlementAccessPollUnifiedEntitlementInfo",
+       "sceNpEntitlementAccessPollUnifiedEntitlementInfoList",
+       "sceNpEntitlementAccessRequestUnifiedEntitlementInfo",
+       "sceNpEntitlementAccessRequestUnifiedEntitlementInfoList",
+    ];
+
+    private static readonly IReadOnlyCollection<(string symbol, string encodedNid)> errorIfAnyOfTheseAreFound = errorIfAnyOfTheseAreFound_raw_symbol_list.Select(x => (x, Ps4ModuleLoader.Utils.CalculateNidForSymbol(x))).ToList().AsReadOnly();
+
+    // https://www.felixcloutier.com/x86/jmp
+    private static readonly Code[] possibleJmpCodesInPltFunctionEntry =
+    [
+        Code.Jmp_rm16,
+        Code.Jmp_rm32,
+        Code.Jmp_rm64,
+        Code.Jmp_ptr1616,
+        Code.Jmp_ptr1632,
+        Code.Jmp_m1616,
+        Code.Jmp_m1632,
+        Code.Jmp_m1664,
+    ];
+
     private static async Task PatchExecutable(string inputPath, string outputDir, List<DlcInfo> dlcList, bool forceInEboot = false)
     {
         using var fs = new FileStream(inputPath, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -308,11 +336,51 @@ internal class Program
 
         List<(ulong offset, byte[] newBytes, string description)> Patches = new();
 
+        foreach (var unsupportedSymbol in errorIfAnyOfTheseAreFound)
+        {
+            Relocation? relocation = binary.Relocations.FirstOrDefault(x => x.SYMBOL is not null && x.SYMBOL.StartsWith(unsupportedSymbol.encodedNid));
+
+            if (relocation is null || relocation.REAL_FUNCTION_ADDRESS is null)
+            { continue; }
+
+            // read instruction at the address, the biggest possible instruction is 15 bytes
+            byte[] instructionBytes = new byte[15];
+            fs.Seek((long)relocation.REAL_FUNCTION_ADDRESS_FILE(binary), SeekOrigin.Begin);
+            fs.Read(instructionBytes, 0, 15);
+
+            var decoder = Iced.Intel.Decoder.Create(64, instructionBytes);
+            decoder.IP = (ulong)relocation.REAL_FUNCTION_ADDRESS;
+            decoder.Decode(out var instruction);
+
+            if (instruction.Code == Code.INVALID)
+            {
+                throw new Exception("Couldnt check if executable uses libSceNpEntitlementAccess, invalid instruction");
+            }
+
+            // since these functions are dynamically loaded, it can only be indirect jumps
+            if (!possibleJmpCodesInPltFunctionEntry.Contains(instruction.Code))
+            {
+                // if not an indirect jump, then this was likely patched by backporters in which case the real function isnt used
+                // of course they could call the real function from the patched one,
+                // but that would only make sense if they needed to modify the function parameters
+                // and afaik sony doesnt change functions like that in sdk updates
+                // im basing this on the fact that there is, for example, sceSaveDataUmount and sceSaveDataUmount2
+                // sceSaveDataUmount2 was added in a later sdk version and in that versions header file sceSaveDataUmount isnt present
+
+                // this whole thing is another edge case since most games dont implement dlc info functions from both libraries
+                // cod mw3 however does, and all the entitlement access functions are patched out
+                continue;
+            }
+
+            // if its an indirect jump, then the function really is used, so we can error since its not supported
+            throw new Exception($"This executable uses {unsupportedSymbol.symbol} (libSceNpEntitlementAccess) which is not supported");
+        }
+
         // error if game doesnt use appcontent
         bool hasRequiredAppContentSymbols = errorIfNoneOfTheseAreFound.Any(x => binary.Relocations.Any(y => y.SYMBOL is not null && y.SYMBOL.StartsWith(x)));
         if (!hasRequiredAppContentSymbols)
         {
-            throw new Exception("This executable doesnt use any of the functions from libSceAppContent for getting dlc info. This might mean this game loads dlcs in another executable or is using libSceNpEntitlementAccess which is not yet supported.");
+            throw new Exception("This executable doesnt use any functions to get dlc info. This likely means this game loads dlcs in another executable.");
         }
 
         // check if sceKernelLoadStartModule is in the relocations
@@ -540,7 +608,6 @@ internal class Program
         ConsoleUi.LogInfo($"Parsed {dlcInfos.Count} DLCs");
         return dlcInfos;
     }
-
 
     private static void ExtractPkgImage0ToPath(string pkgPath, string outputFolder)
     {
