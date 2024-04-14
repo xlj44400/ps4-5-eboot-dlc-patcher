@@ -3,25 +3,24 @@
 namespace ps4_eboot_dlc_patcher;
 internal class ConsoleUi
 {
-
     public static void LogError(string message)
     {
-        AnsiConsole.MarkupLine($"[red][[ERROR]] {message}[/]");
+        AnsiConsole.MarkupLineInterpolated($"[red][[ERROR]] {message}[/]");
     }
 
     public static void LogWarning(string message)
     {
-        AnsiConsole.MarkupLine($"[yellow][[WARN]] {message}[/]");
+        AnsiConsole.MarkupLineInterpolated($"[yellow][[WARN]] {message}[/]");
     }
 
     public static void LogInfo(string message)
     {
-        AnsiConsole.MarkupLine($"[blue][[INFO]] {message}[/]");
+        AnsiConsole.MarkupLineInterpolated($"[blue][[INFO]] {message}[/]");
     }
 
     public static void LogSuccess(string message)
     {
-        AnsiConsole.MarkupLine($"[green][[INFO]] {message}[/]");
+        AnsiConsole.MarkupLineInterpolated($"[green][[INFO]] {message}[/]");
     }
 
     public static void WriteLine(string message)
@@ -36,7 +35,7 @@ internal class ConsoleUi
 
     public static List<string> MultilineInput(string message)
     {
-        AnsiConsole.MarkupLine($"[yellow]{message}[/]");
+        AnsiConsole.MarkupLineInterpolated($"[yellow]{message}[/]");
         AnsiConsole.MarkupLine($"Press enter on an empty line to finish");
 
         List<string> lines = new();
@@ -54,7 +53,7 @@ internal class ConsoleUi
 
     public static string? Input(string message)
     {
-        AnsiConsole.MarkupLine($"[yellow]{message}[/]");
+        AnsiConsole.MarkupLineInterpolated($"[yellow]{message}[/]");
         return Console.ReadLine();
     }
 
