@@ -84,18 +84,13 @@ internal static class InExecutableLoaderStuff
         decoder.IP = codeSegment.MEM_ADDR;
         int lastPercentPrinted = 0;
 
-        var progress = new ConsoleUi.ProgressBar("Analyzing code segment");
+        var progress = new ConsoleUi.PercentProgressBar("Analyzing code segment");
 
         ulong memAddrPlusFileSize = codeSegment.MEM_ADDR + codeSegment.FILE_SIZE;
         while(decoder.IP < memAddrPlusFileSize)
         {
-            int percent = (int)Math.Round((double)((double)(decoder.IP - codeSegment.MEM_ADDR) / (double)codeSegment.FILE_SIZE) * 100, 0);
-            if (percent != lastPercentPrinted)
-            {
-                await progress.Update(percent);
-                lastPercentPrinted = percent;
-            }
-
+            await progress.Update((double)((double)(decoder.IP - codeSegment.MEM_ADDR) / (double)codeSegment.FILE_SIZE) * 100);
+            
             decoder.Decode(out var instr);
 
             if (instr.Code == Code.Call_rel32_64 || instr.Code == Code.Jmp_rel32_64)

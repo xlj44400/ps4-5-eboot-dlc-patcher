@@ -106,22 +106,15 @@ internal static class PrxLoaderStuff
         var decoder = Iced.Intel.Decoder.Create(64, reader);
         decoder.IP = codeSegment.MEM_ADDR;
         List<Instruction> previousTenInstructions = new();
-        int lastPercentPrinted = 0;
 
-        var progress = new ConsoleUi.ProgressBar("Analyzing code segment");
+        var progress = new ConsoleUi.PercentProgressBar("Analyzing code segment");
 
         ulong memAddrPlusFileSize = codeSegment.MEM_ADDR + codeSegment.FILE_SIZE;
         while (decoder.IP < memAddrPlusFileSize)
         {
-            int percent = (int)Math.Round((double)((double)(decoder.IP - codeSegment.MEM_ADDR) / (double)codeSegment.FILE_SIZE) * 100, 0);
-            if (percent != lastPercentPrinted)
-            {
-                lastPercentPrinted = percent;
-                await progress.Update(percent);
-            }
+            await progress.Update((double)((double)(decoder.IP - codeSegment.MEM_ADDR) / (double)codeSegment.FILE_SIZE) * 100);
 
             decoder.Decode(out var instr);
-
 
             if (instr.Code == Code.Call_rel32_64 || instr.Code == Code.Jmp_rel32_64)
             {
@@ -166,6 +159,7 @@ internal static class PrxLoaderStuff
             { previousTenInstructions.RemoveAt(0); }
         }
 
+        await progress.Update(100);
 
         // here we have all calls to sceAppContentInitialize
         // and hopefully also sceSysmoduleLoadModule(0xB4)

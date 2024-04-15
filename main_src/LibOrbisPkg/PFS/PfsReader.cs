@@ -38,12 +38,12 @@ namespace LibOrbisPkg.PFS
         var breadcrumbs = name.Split('/');
         Node n = this;
         var bc = 0;
-        while(n != null && bc < breadcrumbs.Length)
+        while (n != null && bc < breadcrumbs.Length)
         {
           n = (n as Dir)?.Get(breadcrumbs[bc]);
           bc++;
         }
-        if(bc < breadcrumbs.Length)
+        if (bc < breadcrumbs.Length)
         {
           return null;
         }
@@ -51,7 +51,7 @@ namespace LibOrbisPkg.PFS
       }
       public IEnumerable<File> GetAllFiles()
       {
-        foreach(var n in children)
+        foreach (var n in children)
         {
           if (n is File f) yield return f;
           if (n is Dir d)
@@ -74,7 +74,7 @@ namespace LibOrbisPkg.PFS
           return new ChunkedMemoryReader(reader, 0x10000, blocks);
         return new MemoryAccessor(reader, offset);
       }
-      public void Save(string path, bool decompress = false)
+      public async Task Save(string path, bool decompress = false, Func<long, Task>? bytesCopiedProgress = null)
       {
         var buf = new byte[0x10000];
         using (var file = System.IO.File.OpenWrite(path))
@@ -92,9 +92,13 @@ namespace LibOrbisPkg.PFS
           {
             var toRead = (int)Math.Min(sz, buf.Length);
             reader.Read(pos, buf, 0, toRead);
-            file.Write(buf, 0, toRead);
+            await file.WriteAsync(buf, 0, toRead);
             pos += toRead;
             sz -= toRead;
+            if (bytesCopiedProgress != null)
+            { 
+              await bytesCopiedProgress(toRead);
+            }
           }
         }
       }
@@ -243,7 +247,7 @@ namespace LibOrbisPkg.PFS
     private File LoadFile(uint dinode, Dir parent, string name)
     {
       int[] blocks = null;
-      if(dinodes[dinode].Blocks > 1 && dinodes[dinode].DirectBlocks[1] != -1)
+      if (dinodes[dinode].Blocks > 1 && dinodes[dinode].DirectBlocks[1] != -1)
       {
         if (!hdr.Mode.HasFlag(PfsMode.Signed))
         {
@@ -277,9 +281,9 @@ namespace LibOrbisPkg.PFS
         }
         bool contiguous = true;
         int last = blocks[0] - 1;
-        for(int i = 1; i < blocks.Length; i++)
+        for (int i = 1; i < blocks.Length; i++)
         {
-          if(blocks[i - 1] + 1 != blocks[i])
+          if (blocks[i - 1] + 1 != blocks[i])
           {
             contiguous = false;
             break;

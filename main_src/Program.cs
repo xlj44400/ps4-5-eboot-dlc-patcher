@@ -107,7 +107,7 @@ internal class Program
             var choice2 = "Print DLC infos";
             var choice3 = "Enter more dlc infos";
             var choice4 = "Enter more executables";
-            var choice6 = "Extract Image0 of PKGs";
+            var choice6 = "Extract w/ extra data dlcs into dlcXX folders";
             var choice5 = "Exit";
 
             List<string> kwuafh =
@@ -183,8 +183,8 @@ internal class Program
                 ConsoleUi.LogInfo($"Output directory: {outDir}");
                 ConsoleUi.LogSuccess("Finished patching executables");
 
-                string copyDlcDataIntoFoldersOption = "Extract w/ extra data dlcs into folders";
-                string showDlcInfoOption = "Show DLC info";
+                string copyDlcDataIntoFoldersOption = choice6;
+                string showDlcInfoOption = "Show DLC required paths";
                 string exitOption = "Exit";
 
                 string[] endOptions = [copyDlcDataIntoFoldersOption, showDlcInfoOption, exitOption];
@@ -201,7 +201,7 @@ internal class Program
 
                     if (endChoice == copyDlcDataIntoFoldersOption)
                     {
-                        if (dlcInfos.Any(x => string.IsNullOrWhiteSpace(x.Path)))
+                        if (dlcInfos.Any(x => x.Type == DlcInfo.DlcType.PSAC && string.IsNullOrWhiteSpace(x.Path)))
                         {
                             ConsoleUi.LogError("Some DLCs dont have a path set");
                             continue;
@@ -216,11 +216,13 @@ internal class Program
 
                         int i = 0;
 
-                        foreach (var dlcInfo in dlcInfos.Where(x => x.Type == DlcInfo.DlcType.PSAC))
+                        var acDlcs = dlcInfos.Where(x => x.Type == DlcInfo.DlcType.PSAC);
+
+                        foreach (var dlcInfo in acDlcs)
                         {
-                            ConsoleUi.LogInfo($"Extacting {dlcInfo.EntitlementLabel} to {updateImage0Path}/dlc{i:D2}...");
+                            ConsoleUi.LogInfo($"({i+1}/{acDlcs.Count()}) Extacting {dlcInfo.EntitlementLabel} to {updateImage0Path}/dlc{i:D2}...");
                             var extractOutDir = Path.Combine(updateImage0Path, $"dlc{i:D2}");
-                            ExtractPkgImage0ToPath(dlcInfo.Path!, extractOutDir);
+                            await ExtractPkgImage0ToPathAsync(dlcInfo.Path!, extractOutDir);
                             i++;
                         }
 
@@ -270,18 +272,29 @@ internal class Program
             }
             else if (menuChoice == choice6)
             {
-                var outputDir = ConsoleUi.Input("Enter output folder path... (Each dlc will be in its own subdirectory named its entitlement label)");
+                if (dlcInfos.Any(x => x.Type == DlcInfo.DlcType.PSAC && string.IsNullOrWhiteSpace(x.Path)))
+                {
+                    ConsoleUi.LogError("Some DLCs dont have a path set");
+                    continue;
+                }
+
+                var outputDir = ConsoleUi.Input("Enter output folder path... (Each with extra data dlc will be in its own subdirectory named dlcXX (00, 01, 02, ...) in the order you entered them, without extra data dlcs are not counted)");
                 if (!Directory.Exists(outputDir))
                 {
                     ConsoleUi.LogError("Path does not exist");
                     continue;
                 }
 
-                foreach (var dlcInfo in dlcInfos.Where(x => x.Type == DlcInfo.DlcType.PSAC))
+                int i = 0;
+
+                var acDlcs = dlcInfos.Where(x => x.Type == DlcInfo.DlcType.PSAC);
+
+                foreach (var dlcInfo in acDlcs)
                 {
-                    ConsoleUi.LogInfo($"Extacting {dlcInfo.EntitlementLabel} to {outputDir}/{dlcInfo.EntitlementLabel}...");
-                    var extractOutDir = Path.Combine(outputDir, dlcInfo.EntitlementLabel);
-                    ExtractPkgImage0ToPath(dlcInfo.Path!, extractOutDir);
+                    ConsoleUi.LogInfo($"({i+1}/{acDlcs.Count()}) Extacting {dlcInfo.EntitlementLabel} to {outputDir}/dlc{i:D2}...");
+                    var extractOutDir = Path.Combine(outputDir, $"dlc{i:D2}");
+                    await ExtractPkgImage0ToPathAsync(dlcInfo.Path!, extractOutDir);
+                    i++;
                 }
 
                 ConsoleUi.LogSuccess("Finished extracting pkgs");
@@ -609,7 +622,132 @@ internal class Program
         return dlcInfos;
     }
 
-    private static void ExtractPkgImage0ToPath(string pkgPath, string outputFolder)
+    // https://github.com/OpenOrbis/LibOrbisPkg/blob/594021fdc435409f755a6ae0781b65ec6cec846c/PkgEditor/Views/PkgView.cs#L239
+    private static async Task ExtractPkgImage0ToPathAsync(string pkgPath, string outputFolder)
+    {
+        if (Directory.Exists(outputFolder))
+        {
+            var choice1 = "Overwrite files in output folder";
+            var choice2 = "Skip this pkg";
+            var choice3 = "Exit";
+
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"Output folder '{Path.GetDirectoryName(outputFolder)}' already exists, what do you want to do?")
+                    .PageSize(10)
+                    .AddChoices(
+                        choice1,
+                        choice2,
+                        choice3
+                    ));
+
+            if (choice == choice1)
+            {
+                // nothing
+            }
+            else if (choice == choice2)
+            {
+                ConsoleUi.LogInfo($"Skipping {pkgPath}");
+                return;
+            }
+            else if (choice == choice3)
+            {
+                throw new Exception("User aborted");
+            }
+        }
+        else
+        { 
+            Directory.CreateDirectory(outputFolder);
+        }
+        
+
+        var pkgFile = MemoryMappedFile.CreateFromFile(pkgPath, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
+        Pkg pkg;
+        using (var fs = pkgFile.CreateViewStream(0, 0, MemoryMappedFileAccess.Read))
+        {
+            pkg = new PkgReader(fs).ReadPkg();
+        }
+
+        byte[]? ekpfs, data = null, tweak = null;
+
+        if (pkg.CheckPasscode("00000000000000000000000000000000"))
+        {
+            var passcode = "00000000000000000000000000000000";
+            ekpfs = Crypto.ComputeKeys(pkg.Header.content_id, passcode, 1);
+        }
+        else
+        {
+            ekpfs = pkg.GetEkpfs();
+
+            if (ekpfs is null)
+            {
+                throw new Exception("Unable to get ekpfs (not fpkg?)");
+            }
+        }
+
+        if (!pkg.CheckEkpfs(ekpfs) && (data == null || tweak == null))
+        {
+            throw new Exception("Invalid ekpfs (not fpkg?)");
+        }
+
+        var va = pkgFile.CreateViewAccessor((long)pkg.Header.pfs_image_offset, (long)pkg.Header.pfs_image_size, MemoryMappedFileAccess.Read);
+        var outerPfs = new PfsReader(va, pkg.Header.pfs_flags, ekpfs, tweak, data);
+        var innerPfsView = new PFSCReader(outerPfs.GetFile("pfs_image.dat").GetView());
+
+        var inner = new PfsReader(innerPfsView);
+
+        var uroot = inner.GetURoot();
+
+        var urootTotalUncompressedSize = uroot.GetAllFiles().Sum(x => x.size);
+
+        var progressBar = new ConsoleUi.FileCopyProgressBar("Extracting dlc pkg", urootTotalUncompressedSize);
+
+        var progressCallback = new Func<long, Task>(progressBar.Increment);
+        await ExtractInParallel(uroot.children, outputFolder, progressCallback,4);
+
+        await progressBar.Update(urootTotalUncompressedSize);
+
+        ConsoleUi.LogSuccess($"Finished extracting pkg {pkgPath} to {outputFolder}");
+    }
+
+    // https://github.com/OpenOrbis/LibOrbisPkg/blob/594021fdc435409f755a6ae0781b65ec6cec846c/PkgEditor/Views/FileView.cs#L129C1-L145C6
+    // TODO: Parallelize this
+    private static async Task SaveTo(IEnumerable<LibOrbisPkg.PFS.PfsReader.Node> nodes, string path, Func<long, Task>? progress = null)
+    {
+        foreach (var n in nodes)
+        {
+            if (n is LibOrbisPkg.PFS.PfsReader.File f)
+            {
+                await f.Save(Path.Combine(path, n.name), n.size != n.compressed_size, progress);
+            }
+            else if (n is LibOrbisPkg.PFS.PfsReader.Dir d)
+            {
+                var newPath = Path.Combine(path, d.name);
+                Directory.CreateDirectory(newPath);
+                await SaveTo(d.children, newPath, progress);
+            }
+        }
+    }
+
+    private static async Task ExtractInParallel(IEnumerable<LibOrbisPkg.PFS.PfsReader.Node> nodes, string outPath, Func<long, Task>? progress = null,int maxConcurrentTasks = -1)
+    {
+        await Parallel.ForEachAsync(nodes, new ParallelOptions { MaxDegreeOfParallelism = maxConcurrentTasks }, async (n, token) =>
+        {
+            if (n is LibOrbisPkg.PFS.PfsReader.File f)
+            {
+                await f.Save(Path.Combine(outPath, n.name), n.size != n.compressed_size, progress);
+            }
+            else if (n is LibOrbisPkg.PFS.PfsReader.Dir d)
+            {
+                var newPath = Path.Combine(outPath, d.name);
+                Directory.CreateDirectory(newPath);
+                await ExtractInParallel(d.children, newPath, progress);
+            }
+        });
+    }
+
+
+    public static void ListAllExecutablesInPkg(string pkgPath)
     {
         using var pkgFile = MemoryMappedFile.CreateFromFile(pkgPath, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
         using var fs = pkgFile.CreateViewStream(0, 0, MemoryMappedFileAccess.Read);
@@ -618,11 +756,19 @@ internal class Program
 
         byte[]? ekpfs, data = null, tweak = null;
 
-        ekpfs = pkg.GetEkpfs();
-
-        if (ekpfs is null)
+        if (pkg.CheckPasscode("00000000000000000000000000000000"))
         {
-            throw new Exception("Unable to get ekpfs (not fpkg?)");
+            var passcode = "00000000000000000000000000000000";
+            ekpfs = Crypto.ComputeKeys(pkg.Header.content_id, passcode, 1);
+        }
+        else
+        {
+            ekpfs = pkg.GetEkpfs();
+
+            if (ekpfs is null)
+            {
+                throw new Exception("Unable to get ekpfs (not fpkg?)");
+            }
         }
 
         if (!pkg.CheckEkpfs(ekpfs) && (data == null || tweak == null))
@@ -638,31 +784,28 @@ internal class Program
 
         var uroot = inner.GetURoot();
 
-        if (!Directory.Exists(outputFolder))
-        {
-            Directory.CreateDirectory(outputFolder);
-        }
-
-        SaveTo(uroot.children, outputFolder);
+        ListAllExecutablesInPfsDir(uroot);
+        Console.WriteLine("Done");
     }
 
-    // https://github.com/OpenOrbis/LibOrbisPkg/blob/594021fdc435409f755a6ae0781b65ec6cec846c/PkgEditor/Views/FileView.cs#L129C1-L145C6
-    // TODO: Parallelize this
-    private static void SaveTo(IEnumerable<LibOrbisPkg.PFS.PfsReader.Node> nodes, string path)
+    private static readonly string[] executableExtensions = [".elf", ".prx", ".sprx", ".bin"];
+    private static void ListAllExecutablesInPfsDir(PfsReader.Dir dir)
     {
-        foreach (var n in nodes)
+        foreach (var n in dir.children)
         {
             if (n is LibOrbisPkg.PFS.PfsReader.File f)
             {
-                f.Save(Path.Combine(path, n.name), n.size != n.compressed_size);
+                if (executableExtensions.Contains(Path.GetExtension(f.name), StringComparer.InvariantCultureIgnoreCase))
+                {
+                    Console.WriteLine(f.FullName);
+                }
             }
             else if (n is LibOrbisPkg.PFS.PfsReader.Dir d)
             {
-                var newPath = Path.Combine(path, d.name);
-                Directory.CreateDirectory(newPath);
-                SaveTo(d.children, newPath);
+                ListAllExecutablesInPfsDir(d);
             }
         }
     }
+
 
 }
