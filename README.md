@@ -39,3 +39,4 @@ Video tutorial by Modded Warfare: [https://www.youtube.com/watch?v=xWu-a7Im3V8](
 - [maxton](https://github.com/maxton) for creating [LibOrbisPkg](https://github.com/OpenOrbis/LibOrbisPkg) and the [OpenOrbis team](https://github.com/OpenOrbis) for maintaining it.
 - [Iced](https://github.com/icedland/iced)
 - [spectre.console](https://github.com/spectreconsole/spectre.console)
+- Big shoutout to [hrdcrd](https://twitter.com/hrdcrd) for testing a ton of games and reporting bugs!
