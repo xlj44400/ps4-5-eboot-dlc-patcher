@@ -14,6 +14,8 @@ This is intended to be used on ps5 where dlc fpkgs dont work. It automatically p
 Other os and arch binaries are available [here](https://github.com/idlesauce/ps4-eboot-dlc-patcher/releases/latest), along with a `framework-dependent` version which is cross-platform, but requires the dotnet 8 runtime.
   
 ## Instructions
+Video tutorial by Modded Warfare: [https://www.youtube.com/watch?v=xWu-a7Im3V8](https://www.youtube.com/watch?v=xWu-a7Im3V8)
+
 1. Extract the update pkg of the game, or if the game is base only or merged base+update, then extract the `Sc0` and `sce_sys` folders along with the executables to patch. The executables you need will most likely be `eboot.bin` and other `.elf` files (most games only use the `eboot.bin`) (it could also be `.prx`, but ignore `.prx` files in the `sce_module` folder)
 1. Run selfutil on the executables to decrypt them.
 1. For the easiest usage copy all the dlc pkgs and executables into a folder then highlight and drag them onto the `ps4-eboot-dlc-patcher` exe. (You can also drag just the dlc pkgs onto it and enter the executables paths in the menu, or enter all paths as cli arguments)
