@@ -1,5 +1,3 @@
-#pragma once
-
 #define SCE_KERNEL_O_WRONLY 0x0001
 #define SCE_KERNEL_O_CREAT 0x0200
 #define SCE_KERNEL_O_APPEND 0x0008
@@ -49,11 +47,13 @@ typedef struct SceNpUnifiedEntitlementLabel
 	char padding[3];
 } SceNpUnifiedEntitlementLabel;
 
+
 typedef struct
 {
 	SceNpUnifiedEntitlementLabel entitlementLabel;
 	uint32_t status; // SceAppContentAddcontDownloadStatus
 } SceAppContentAddcontInfo;
+
 
 #define SCE_APP_CONTENT_ERROR_NOT_INITIALIZED -2133262335 // 0x80D90001
 
@@ -190,15 +190,15 @@ typedef uint32_t SceAppContentTemporaryDataOption;
 // with format
 #define SCE_APP_CONTENT_TEMPORARY_DATA_OPTION_FORMAT (1 << 0)
 
-typedef uint32_t SceNpEntitlementAccessPackageType;
-typedef uint32_t SceNpEntitlementAccessDownloadStatus;
+// typedef uint32_t SceNpEntitlementAccessPackageType;
+// typedef uint32_t SceNpEntitlementAccessDownloadStatus;
 
-typedef struct SceNpEntitlementAccessAddcontEntitlementInfo
-{
-	SceNpUnifiedEntitlementLabel entitlementLabel;
-	SceNpEntitlementAccessPackageType packageType;
-	SceNpEntitlementAccessDownloadStatus downloadStatus;
-} SceNpEntitlementAccessAddcontEntitlementInfo;
+// typedef struct SceNpEntitlementAccessAddcontEntitlementInfo
+// {
+// 	SceNpUnifiedEntitlementLabel entitlementLabel;
+// 	SceNpEntitlementAccessPackageType packageType;
+// 	SceNpEntitlementAccessDownloadStatus downloadStatus;
+// } SceNpEntitlementAccessAddcontEntitlementInfo;
 
 // library initialize parameter structure
 typedef struct SceAppContentInitParam
@@ -227,11 +227,11 @@ typedef struct SceAppContentAddcontDownloadProgress
 	uint64_t downloadedSize;
 } SceAppContentAddcontDownloadProgress;
 
-#define SCE_NP_ENTITLEMENT_ACCESS_ENTITLEMENT_KEY_SIZE (16)
-typedef struct SceNpEntitlementAccessEntitlementKey
-{
-	char data[SCE_NP_ENTITLEMENT_ACCESS_ENTITLEMENT_KEY_SIZE];
-} SceNpEntitlementAccessEntitlementKey;
+// #define SCE_NP_ENTITLEMENT_ACCESS_ENTITLEMENT_KEY_SIZE (16)
+// typedef struct SceNpEntitlementAccessEntitlementKey
+// {
+// 	char data[SCE_NP_ENTITLEMENT_ACCESS_ENTITLEMENT_KEY_SIZE];
+// } SceNpEntitlementAccessEntitlementKey;
 
 #define SCE_APP_CONTENT_ENTITLEMENT_KEY_SIZE (16)
 
@@ -252,14 +252,8 @@ typedef uint32_t SceAppContentPftFlag;
 
 typedef int SceUserServiceUserId;
 
-int append_to_log_file(const char *str);
-
 static uint64_t getNanoTime();
 static uint64_t timespec_to_nano(const SceKernelTimespec *timespec);
-void intToStr(int num, char *str);
-void Log(const char *str);
-void KernelPrintOut(const char *str);
-int copy_save_if_needed();
 
 typedef struct
 {

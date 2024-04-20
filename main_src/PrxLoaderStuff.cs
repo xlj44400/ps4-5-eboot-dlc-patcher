@@ -8,19 +8,6 @@ internal static class PrxLoaderStuff
 {
     private const string PRX_PATH = "/app0/dlcldr.prx";
 
-    private static readonly string[] moduleNamesToReplaceWithDlcldr = [
-        "libSceAppContentUtil",
-    ];
-
-    // https://github.com/OpenOrbis/create-fself/blob/9b72c778eeafddfc00a6c443debed925dd2af605/pkg/oelf/OELFStrangeLibs.go#L119
-    private static readonly string[] libraryNamesToReplaceWithDlcldr = [
-        "libSceAppContent",
-        "libSceAppContentBundle",
-        "libSceAppContentIro",
-        "libSceAppContentPft",
-        "libSceAppContentSc",
-    ];
-
     private static readonly string[] libSceAppContentSymbols = [
         // "sceAppContentInitialize", // this is handled explicitly
         "sceAppContentGetAddcontInfo",
@@ -61,8 +48,11 @@ internal static class PrxLoaderStuff
 
     private const string newModuleAndLibraryName = "dlcldr";
     private const string fakeAppContentFunctionPrefix = "dlcldr_";
-    internal static async Task<List<(ulong offset, byte[] newBytes, string description)>> GetAllPatchesForExec(Ps4ModuleLoader.Ps4Binary binary, FileStream fs, int freeSpaceAtEnd, int fileOffsetOfFreeSpaceStart, ulong sceKernelLoadStartModuleFunctionEntryFileOffset)
+    internal static async Task<List<(ulong offset, byte[] newBytes, string description)>> GetAllPatchesForExec(Ps4ModuleLoader.Ps4Binary binary, FileStream fs, int freeSpaceAtEnd, int fileOffsetOfFreeSpaceStart, ulong sceKernelLoadStartModuleFunctionEntryFileOffset, bool patchAppContent, bool patchEntitlementAcces)
     {
+        if (!patchAppContent && !patchEntitlementAcces)
+        { throw new UnreachableException("No patches selected"); }
+
         List<(ulong offset, byte[] newBytes, string description)> patches = new();
 
         // since in the prx loader we're using relative addressing, it doesnt matter that these addresses are relative to file start not mem start
@@ -90,15 +80,21 @@ internal static class PrxLoaderStuff
         // in which case the game would crash, tho this is unlikely. Normally if a function is called without init first it returns an
         // SCE_APP_CONTENT_ERROR_NOT_INITIALIZED error, so its feasable the game would call init only after this error code is seen ig
 
-        List<(string symbol, ulong? funcPtr, List<Instruction> xrefs)> symbolsWithXrefs =
-        [
-            ("sceAppContentInitialize", binary.Relocations.SingleOrDefault(x => x.SYMBOL is not null && x.SYMBOL.StartsWith(Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentInitialize")))?.REAL_FUNCTION_ADDRESS, new()),
-        ];
+        List<(string symbol, ulong? funcPtr, List<Instruction> xrefs)> symbolsWithXrefs = new();
+
+        if (patchAppContent)
+        {
+            symbolsWithXrefs.Add(("sceAppContentInitialize", binary.Relocations.SingleOrDefault(x => x.SYMBOL is not null && x.SYMBOL.StartsWith(Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentInitialize")))?.REAL_FUNCTION_ADDRESS, new()));
+        }
+        if (patchEntitlementAcces)
+        {
+            symbolsWithXrefs.Add(("sceNpEntitlementAccessInitialize", binary.Relocations.SingleOrDefault(x => x.SYMBOL is not null && x.SYMBOL.StartsWith(Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceNpEntitlementAccessInitialize")))?.REAL_FUNCTION_ADDRESS, new()));
+        }
 
         // handle this separately since we need to look back at previous instructions to get the call args 
-        // we only care about sceSysmoduleLoadModule(0xB4) and eventually sceSysmoduleLoadModule(0x113) (entitlementaccess)
+        // we only care about sceSysmoduleLoadModule(0xB4) and sceSysmoduleLoadModule(0x113) (entitlementaccess)
         // https://www.psdevwiki.com/ps5/Libraries
-        (string symbol, ulong? funcPtr, List<Instruction> xrefs) sceSysmoduleLoadModuleXRefs = ("sceSysmoduleLoadModule", binary.Relocations.SingleOrDefault(x => x.SYMBOL is not null && x.SYMBOL.StartsWith(Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceSysmoduleLoadModule")))?.REAL_FUNCTION_ADDRESS, new());
+        (string symbol, ulong? funcPtr, List<(Instruction instruction, uint rdiImm)> xrefs) sceSysmoduleLoadModuleXRefs = ("sceSysmoduleLoadModule", binary.Relocations.SingleOrDefault(x => x.SYMBOL is not null && x.SYMBOL.StartsWith(Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceSysmoduleLoadModule")))?.REAL_FUNCTION_ADDRESS, new());
 
         var reader = new StreamCodeReader(fs);
         fs.Seek((long)codeSegment.OFFSET, SeekOrigin.Begin);
@@ -143,13 +139,13 @@ internal static class PrxLoaderStuff
                         if (previousTenInstructions[j].Op0Register != Register.DI && previousTenInstructions[j].Op0Register != Register.DIL && previousTenInstructions[j].Op0Register != Register.EDI && previousTenInstructions[j].Op0Register != Register.RDI)
                         { continue; }
 
-                        // if not 0xb4 break, we only care about the last assign
-                        if (previousTenInstructions[j].Immediate8 != 0xb4)
+                        // if not 0xb4 or 0x113 break, we only care about the last assign
+                        if (previousTenInstructions[j].Immediate32 != 0xb4 && previousTenInstructions[j].Immediate32 != 0x113)
                         { break; }
 
                         // if we got here then we found a mov edi, 0xb4 (sceSysmoduleLoadModule(0xB4))
-                        ConsoleUi.LogInfo($"Found mov edi, 0xb4 at 0x{previousTenInstructions[j].IP:X} (sceSysmoduleLoadModule(0xB4))");
-                        sceSysmoduleLoadModuleXRefs.xrefs.Add(instr);
+                        ConsoleUi.LogInfo($"Found mov edi, 0x{previousTenInstructions[j].Immediate32:X} at 0x{previousTenInstructions[j].IP:X} (sceSysmoduleLoadModule)");
+                        sceSysmoduleLoadModuleXRefs.xrefs.Add((instr, previousTenInstructions[j].Immediate32));
                     }
                 }
             }
@@ -177,70 +173,165 @@ internal static class PrxLoaderStuff
         // A game could exist where this binary calls functions from libSceAppContent but loads and initializes in another binary
         // this is such an edge case that ill just ignore it until i know of a game that does this
 
-        if (symbolsWithXrefs.First(x => x.symbol == "sceAppContentInitialize").xrefs.Count == 0)
-        { throw new Exception("No references found for sceAppContentInitialize."); }
+        // if (symbolsWithXrefs.First(x => x.symbol == "sceAppContentInitialize").xrefs.Count == 0)
+        // { throw new Exception("No references found for sceAppContentInitialize."); }
 
-        if (sceSysmoduleLoadModuleXRefs.xrefs.Count == 0)
+        if (patchAppContent)
         {
-            // TODO: add switch to auto continue for this scenario
-            // prompt user if they want to with loading prx at sceAppContentInitialize since its possibly unsafe
-            
-            if(!ConsoleUi.Confirm("sceSysmoduleLoadModule(0xB4) not found, do you want to load prx at sceAppContentInitialize instead? Although its unlikely, the game may call another function before sceAppContentInitialize in which case the game would crash. Continue?"))
+            if (sceSysmoduleLoadModuleXRefs.xrefs.Count(x => x.rdiImm == 0xb4) == 0)
             {
-                throw new Exception("User aborted");
-            }
+                // TODO: add switch to auto continue for this scenario
+                // prompt user if they want to with loading prx at sceAppContentInitialize since its possibly unsafe
 
-            // redirect all calls to sceAppContentInitialize to the prx loader
-            foreach (var xref in symbolsWithXrefs.First(x => x.symbol == "sceAppContentInitialize").xrefs)
+                if (!ConsoleUi.Confirm("sceSysmoduleLoadModule(0xB4) not found, do you want to load prx at sceAppContentInitialize instead? Although its unlikely, the game may call another function before sceAppContentInitialize in which case the game would crash. Continue?"))
+                {
+                    throw new Exception("User aborted");
+                }
+
+                // redirect all calls to sceAppContentInitialize to the prx loader
+                foreach (var xref in symbolsWithXrefs.First(x => x.symbol == "sceAppContentInitialize").xrefs)
+                {
+                    // before, while searching for xrefs we only added E8 and E9 opcodes
+                    // so we're always dealing with 5 bytes, and we can skip the first one, we only need to change the offset
+                    uint prxLoaderEntryAddrOffset = (uint)(prxLoaderEntryMemAddr - (xref.IP + (ulong)xref.Length));
+                    byte[] newBytes = new byte[4];
+                    BinaryPrimitives.WriteInt32LittleEndian(newBytes, (int)prxLoaderEntryAddrOffset);
+                    patches.Add(((xref.IP32 - codeSegment.MEM_ADDR) + 1 + codeSegment.OFFSET, newBytes, "sceAppContentInitialize to prx loader"));
+                }
+            }
+            else
             {
-                // before, while searching for xrefs we only added E8 and E9 opcodes
-                // so we're always dealing with 5 bytes, and we can skip the first one, we only need to change the offset
-                uint prxLoaderEntryAddrOffset = (uint)(prxLoaderEntryMemAddr - (xref.IP + (ulong)xref.Length));
-                byte[] newBytes = new byte[4];
-                BinaryPrimitives.WriteInt32LittleEndian(newBytes, (int)prxLoaderEntryAddrOffset);
-                patches.Add(((xref.IP32 - codeSegment.MEM_ADDR) + 1 + codeSegment.OFFSET, newBytes, "sceAppContentInitialize to prx loader"));
+                // we found sceSysmoduleLoadModule(0xB4) so we can load the prx there
+                foreach (var xref in sceSysmoduleLoadModuleXRefs.xrefs.Where(x => x.rdiImm == 0xb4))
+                {
+                    // before, while searching for xrefs we only added E8 and E9 opcodes
+                    // so we're always dealing with 5 bytes, and we can skip the first one, we only need to change the offset
+                    uint prxLoaderEntryAddrOffset = (uint)(prxLoaderEntryMemAddr - (xref.instruction.IP + (ulong)xref.instruction.Length));
+                    byte[] newBytes = new byte[4];
+                    BinaryPrimitives.WriteInt32LittleEndian(newBytes, (int)prxLoaderEntryAddrOffset);
+                    patches.Add(((xref.instruction.IP - codeSegment.MEM_ADDR) + 1 + codeSegment.OFFSET, newBytes, "sceSysmoduleLoadModule(0xB4) to prx loader"));
+                }
+
+                // patch out sceAppContentInitialize calls
+                foreach (var xref in symbolsWithXrefs.First(x => x.symbol == "sceAppContentInitialize").xrefs)
+                {
+                    // we know its always 5 bytes
+                    byte[] newBytes = new byte[5];
+                    if (xref.Code == Code.Call_rel32_64)
+                    {
+                        newBytes = [0xB8, 0x00, 0x00, 0x00, 0x00];
+                    }
+                    else if (xref.Code == Code.Jmp_rel32_64)
+                    {
+                        newBytes = [0x31, 0xC0, 0x90, 0x90, 0xC3];
+                    }
+                    else
+                    {
+                        throw new UnreachableException("Unknown opcode");
+                    }
+                    patches.Add(((xref.IP - codeSegment.MEM_ADDR) + codeSegment.OFFSET, newBytes, "patch out call to sceAppContentInitialize"));
+                }
+
             }
         }
-        else
+
+        if (patchEntitlementAcces)
         {
-            // we found sceSysmoduleLoadModule(0xB4) so we can load the prx there
-            foreach (var xref in sceSysmoduleLoadModuleXRefs.xrefs)
+            if (sceSysmoduleLoadModuleXRefs.xrefs.Count(x => x.rdiImm == 0x113) == 0)
             {
-                // before, while searching for xrefs we only added E8 and E9 opcodes
-                // so we're always dealing with 5 bytes, and we can skip the first one, we only need to change the offset
-                uint prxLoaderEntryAddrOffset = (uint)(prxLoaderEntryMemAddr - (xref.IP + (ulong)xref.Length));
-                byte[] newBytes = new byte[4];
-                BinaryPrimitives.WriteInt32LittleEndian(newBytes, (int)prxLoaderEntryAddrOffset);
-                patches.Add(((xref.IP - codeSegment.MEM_ADDR) + 1 + codeSegment.OFFSET, newBytes, "sceSysmoduleLoadModule(0xB4) to prx loader"));
-            }
+                // TODO: add switch to auto continue for this scenario
+                // prompt user if they want to with loading prx at sceNpEntitlementAccessInitialize since its possibly unsafe
 
-            // patch out sceAppContentInitialize calls
-            foreach (var xref in symbolsWithXrefs.First(x => x.symbol == "sceAppContentInitialize").xrefs)
+                if (!ConsoleUi.Confirm("sceSysmoduleLoadModule(0x113) not found, do you want to load prx at sceNpEntitlementAccessInitialize instead? Although its unlikely, the game may call another function before sceNpEntitlementAccessInitialize in which case the game would crash. Continue?"))
+                {
+                    throw new Exception("User aborted");
+                }
+
+                // redirect all calls to sceNpEntitlementAccessInitialize to the prx loader
+                foreach (var xref in symbolsWithXrefs.First(x => x.symbol == "sceNpEntitlementAccessInitialize").xrefs)
+                {
+                    // before, while searching for xrefs we only added E8 and E9 opcodes
+                    // so we're always dealing with 5 bytes, and we can skip the first one, we only need to change the offset
+                    uint prxLoaderEntryAddrOffset = (uint)(prxLoaderEntryMemAddr - (xref.IP + (ulong)xref.Length));
+                    byte[] newBytes = new byte[4];
+                    BinaryPrimitives.WriteInt32LittleEndian(newBytes, (int)prxLoaderEntryAddrOffset);
+                    patches.Add(((xref.IP32 - codeSegment.MEM_ADDR) + 1 + codeSegment.OFFSET, newBytes, "sceNpEntitlementAccessInitialize to prx loader"));
+                }
+            }
+            else
             {
-                // we know its always 5 bytes
-                byte[] newBytes = new byte[5];
-                if (xref.Code == Code.Call_rel32_64)
+                // we found sceSysmoduleLoadModule(0x113) so we can load the prx there
+                foreach (var xref in sceSysmoduleLoadModuleXRefs.xrefs.Where(x => x.rdiImm == 0x113))
                 {
-                    newBytes = [0xB8, 0x00, 0x00, 0x00, 0x00];
+                    // before, while searching for xrefs we only added E8 and E9 opcodes
+                    // so we're always dealing with 5 bytes, and we can skip the first one, we only need to change the offset
+                    uint prxLoaderEntryAddrOffset = (uint)(prxLoaderEntryMemAddr - (xref.instruction.IP + (ulong)xref.instruction.Length));
+                    byte[] newBytes = new byte[4];
+                    BinaryPrimitives.WriteInt32LittleEndian(newBytes, (int)prxLoaderEntryAddrOffset);
+                    patches.Add(((xref.instruction.IP - codeSegment.MEM_ADDR) + 1 + codeSegment.OFFSET, newBytes, "sceSysmoduleLoadModule(0x113) to prx loader"));
                 }
-                else if (xref.Code == Code.Jmp_rel32_64)
-                {
-                    newBytes = [0x31, 0xC0, 0x90, 0x90, 0xC3];
-                }
-                else
-                {
-                    throw new UnreachableException("Unknown opcode");
-                }
-                patches.Add(((xref.IP - codeSegment.MEM_ADDR) + codeSegment.OFFSET, newBytes, "patch out call to sceAppContentInitialize"));
-            }
 
+                // patch out sceNpEntitlementAccessInitialize calls
+                foreach (var xref in symbolsWithXrefs.First(x => x.symbol == "sceNpEntitlementAccessInitialize").xrefs)
+                {
+                    // we know its always 5 bytes
+                    byte[] newBytes = new byte[5];
+                    if (xref.Code == Code.Call_rel32_64)
+                    {
+                        newBytes = [0xB8, 0x00, 0x00, 0x00, 0x00];
+                    }
+                    else if (xref.Code == Code.Jmp_rel32_64)
+                    {
+                        newBytes = [0x31, 0xC0, 0x90, 0x90, 0xC3];
+                    }
+                    else
+                    {
+                        throw new UnreachableException("Unknown opcode");
+                    }
+                    patches.Add(((xref.IP - codeSegment.MEM_ADDR) + codeSegment.OFFSET, newBytes, "patch out call to sceNpEntitlementAccessInitialize"));
+                }
+
+            }
+        }
+
+        List<string> moduleNamesToReplaceWithDlcldr = new();
+
+        if (patchAppContent)
+        {
+            moduleNamesToReplaceWithDlcldr.Add("libSceAppContentUtil");
+        }
+        if (patchEntitlementAcces)
+        {
+            moduleNamesToReplaceWithDlcldr.Add("libSceNpEntitlementAccess");
+        }
+
+        // https://github.com/OpenOrbis/create-fself/blob/9b72c778eeafddfc00a6c443debed925dd2af605/pkg/oelf/OELFStrangeLibs.go#L119
+        List<string> libraryNamesToReplaceWithDlcldr = new();
+
+        if (patchAppContent)
+        {
+            libraryNamesToReplaceWithDlcldr.AddRange(
+            [
+                "libSceAppContent",
+                "libSceAppContentBundle",
+                "libSceAppContentIro",
+                "libSceAppContentPft",
+                "libSceAppContentSc",
+            ]);
+        }
+        if (patchEntitlementAcces)
+        {
+            libraryNamesToReplaceWithDlcldr.AddRange(
+            [
+                "libSceNpEntitlementAccess",
+                "libSceNpEntitlementAccessPft",
+            ]);
         }
 
 
         // at this point we have everything done for loading the prx
         // next patch the module and library symbols from libSceAppContent to dlcldr
         // also patch the nids (since for now the prx uses dynamic linking to resolve the real functions from libSceAppContent, and the fake functions would conflict with the real ones)
-
 
         // throws error if any module/library not found
         foreach (var moduleName in moduleNamesToReplaceWithDlcldr)
@@ -283,31 +374,35 @@ internal static class PrxLoaderStuff
         if (patchedLibrariesCount == 0)
         { throw new Exception("No libraries patched"); }
 
-        int patchedNidsCount = 0;
-        foreach (var symbol in libSceAppContentSymbols)
+        // fake handlers in prx for libSceNpEntitlementAccess have the original nids so no need for these patches
+        if (patchAppContent)
         {
-            string realNid = Ps4ModuleLoader.Utils.CalculateNidForSymbol(symbol);
-            string fakeNid = Ps4ModuleLoader.Utils.CalculateNidForSymbol(fakeAppContentFunctionPrefix + symbol);
+            int patchedNidsCount = 0;
+            foreach (var symbol in libSceAppContentSymbols)
+            {
+                string realNid = Ps4ModuleLoader.Utils.CalculateNidForSymbol(symbol);
+                string fakeNid = Ps4ModuleLoader.Utils.CalculateNidForSymbol(fakeAppContentFunctionPrefix + symbol);
 
-            bool symbolFound = binary.Symbols.Any(x => x.Value?.NID is not null && x.Value.NID.StartsWith(realNid));
-            if (!symbolFound)
-            { continue; }
+                bool symbolFound = binary.Symbols.Any(x => x.Value?.NID is not null && x.Value.NID.StartsWith(realNid));
+                if (!symbolFound)
+                { continue; }
 
-            var realSymbol = binary.Symbols.First(x => x.Value?.NID is not null && x.Value.NID.StartsWith(realNid));
+                var realSymbol = binary.Symbols.First(x => x.Value?.NID is not null && x.Value.NID.StartsWith(realNid));
 
-            if (realSymbol.Value?.NID_FILE_ADDRESS is null || realSymbol.Value?.NID_FILE_ADDRESS == default(ulong))
-            { throw new Exception($"Symbol {symbol} nidFileAddress is null"); }
+                if (realSymbol.Value?.NID_FILE_ADDRESS is null || realSymbol.Value?.NID_FILE_ADDRESS == default(ulong))
+                { throw new Exception($"Symbol {symbol} nidFileAddress is null"); }
 
-            byte[] newNidBytes = Encoding.UTF8.GetBytes(fakeNid);
-            patches.Add((realSymbol.Value!.NID_FILE_ADDRESS, newNidBytes, $"Symbol {symbol} nid patch"));
+                byte[] newNidBytes = Encoding.UTF8.GetBytes(fakeNid);
+                patches.Add((realSymbol.Value!.NID_FILE_ADDRESS, newNidBytes, $"Symbol {symbol} nid patch"));
 
-            patchedNidsCount++;
+                patchedNidsCount++;
+            }
+
+            if (patchedNidsCount == 0)
+            { throw new Exception("No nids patched"); }
+
+            ConsoleUi.LogInfo($"Patched {patchedNidsCount} nids");
         }
-
-        if (patchedNidsCount == 0)
-        { throw new Exception("No nids patched"); }
-
-        ConsoleUi.LogInfo($"Patched {patchedNidsCount} nids");
 
         return patches;
     }
@@ -329,9 +424,9 @@ internal static class PrxLoaderStuff
     }
 
     // these are offsets in the SIGNED prx
-    private const int DLCLDR_PRX_DEBUG_MODE_OFFSET = 0x108E0;
-    private const int DLCLDR_PRX_ADDCONT_COUNT_OFFSET = 0x108E4;
-    private const int DLCLDR_PRX_ADDCONT_LIST_OFFSET = 0x108F0;
+    private const int DLCLDR_PRX_DEBUG_MODE_OFFSET = 0x148D0;
+    private const int DLCLDR_PRX_ADDCONT_COUNT_OFFSET = 0x148D4;
+    private const int DLCLDR_PRX_ADDCONT_LIST_OFFSET = 0x148E0;
     internal static List<(ulong offset, byte[] newBytes, string description)> GetAllPatchesForSignedDlcldrPrx(List<DlcInfo> dlcList, int debugMode = 0)
     {
         var patches = new List<(ulong offset, byte[] newBytes, string description)>();

@@ -218,9 +218,15 @@ internal class Program
 
                         var acDlcs = dlcInfos.Where(x => x.Type == DlcInfo.DlcType.PSAC);
 
+                        var nonAcDlcsCount = dlcInfos.Except(acDlcs).Count();
+                        if (nonAcDlcsCount > 0)
+                        {
+                            ConsoleUi.LogWarning($"Skipping {nonAcDlcsCount} without data dlcs, these dont need folders");
+                        }
+
                         foreach (var dlcInfo in acDlcs)
                         {
-                            ConsoleUi.LogInfo($"({i+1}/{acDlcs.Count()}) Extacting {dlcInfo.EntitlementLabel} to {updateImage0Path}/dlc{i:D2}...");
+                            ConsoleUi.LogInfo($"({i + 1}/{acDlcs.Count()}) Extacting {dlcInfo.EntitlementLabel} to {updateImage0Path}/dlc{i:D2}...");
                             var extractOutDir = Path.Combine(updateImage0Path, $"dlc{i:D2}");
                             await ExtractPkgImage0ToPathAsync(dlcInfo.Path!, extractOutDir);
                             i++;
@@ -233,8 +239,16 @@ internal class Program
                     {
                         ConsoleUi.WriteLine("Copy data from dlcs in this order:");
 
+                        var acDlcs = dlcInfos.Where(x => x.Type == DlcInfo.DlcType.PSAC);
+
+                        var nonAcDlcsCount = dlcInfos.Except(acDlcs).Count();
+                        if (nonAcDlcsCount > 0)
+                        {
+                            ConsoleUi.LogWarning($"Skipping {nonAcDlcsCount} without data dlcs, these dont need folders");
+                        }
+
                         int i = 0;
-                        foreach (var dlcInfo in dlcInfos.Where(x => x.Type == DlcInfo.DlcType.PSAC))
+                        foreach (var dlcInfo in acDlcs)
                         {
                             ConsoleUi.WriteLine($"{dlcInfo.EntitlementLabel}/Image0/* -> CUSAxxxxx-patch/Image0/dlc{i:D2}/");
                             i++;
@@ -289,9 +303,15 @@ internal class Program
 
                 var acDlcs = dlcInfos.Where(x => x.Type == DlcInfo.DlcType.PSAC);
 
+                var nonAcDlcsCount = dlcInfos.Except(acDlcs).Count();
+                if (nonAcDlcsCount > 0)
+                {
+                    ConsoleUi.LogWarning($"Skipping {nonAcDlcsCount} without data dlcs, these dont need folders");
+                }
+
                 foreach (var dlcInfo in acDlcs)
                 {
-                    ConsoleUi.LogInfo($"({i+1}/{acDlcs.Count()}) Extacting {dlcInfo.EntitlementLabel} to {outputDir}/dlc{i:D2}...");
+                    ConsoleUi.LogInfo($"({i + 1}/{acDlcs.Count()}) Extacting {dlcInfo.EntitlementLabel} to {outputDir}/dlc{i:D2}...");
                     var extractOutDir = Path.Combine(outputDir, $"dlc{i:D2}");
                     await ExtractPkgImage0ToPathAsync(dlcInfo.Path!, extractOutDir);
                     i++;
@@ -307,24 +327,18 @@ internal class Program
 
     }
 
-    private static readonly string[] errorIfNoneOfTheseAreFound = [
+    private static readonly string[] importantAppContentSymbols = [
         Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentGetAddcontInfoList"),
         Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentGetAddcontInfo"),
-        Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentGetEntitlementKey")
+        Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentGetEntitlementKey"),
+        Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentAddcontMount"),
     ];
 
-    private static readonly string[] errorIfAnyOfTheseAreFound_raw_symbol_list = [
-       "sceNpEntitlementAccessGetAddcontEntitlementInfo",
-       "sceNpEntitlementAccessGetAddcontEntitlementInfoIndividual",
-       "sceNpEntitlementAccessGetAddcontEntitlementInfoList",
-       "sceNpEntitlementAccessGetEntitlementKey",
-       "sceNpEntitlementAccessPollUnifiedEntitlementInfo",
-       "sceNpEntitlementAccessPollUnifiedEntitlementInfoList",
-       "sceNpEntitlementAccessRequestUnifiedEntitlementInfo",
-       "sceNpEntitlementAccessRequestUnifiedEntitlementInfoList",
+    private static readonly string[] importantEntitlementAccessSymbols = [
+        Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceNpEntitlementAccessGetAddcontEntitlementInfo"),
+        Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceNpEntitlementAccessGetAddcontEntitlementInfoList"),
+        Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceNpEntitlementAccessGetEntitlementKey"),
     ];
-
-    private static readonly IReadOnlyCollection<(string symbol, string encodedNid)> errorIfAnyOfTheseAreFound = errorIfAnyOfTheseAreFound_raw_symbol_list.Select(x => (x, Ps4ModuleLoader.Utils.CalculateNidForSymbol(x))).ToList().AsReadOnly();
 
     // https://www.felixcloutier.com/x86/jmp
     private static readonly Code[] possibleJmpCodesInPltFunctionEntry =
@@ -349,49 +363,10 @@ internal class Program
 
         List<(ulong offset, byte[] newBytes, string description)> Patches = new();
 
-        foreach (var unsupportedSymbol in errorIfAnyOfTheseAreFound)
-        {
-            Relocation? relocation = binary.Relocations.FirstOrDefault(x => x.SYMBOL is not null && x.SYMBOL.StartsWith(unsupportedSymbol.encodedNid));
+        bool hasImportantEntitlementAccessRelocations = binary.Relocations.Any(x => x.SYMBOL is not null && importantEntitlementAccessSymbols.Any(y => x.SYMBOL.StartsWith(y)));
 
-            if (relocation is null || relocation.REAL_FUNCTION_ADDRESS is null)
-            { continue; }
-
-            // read instruction at the address, the biggest possible instruction is 15 bytes
-            byte[] instructionBytes = new byte[15];
-            fs.Seek((long)relocation.REAL_FUNCTION_ADDRESS_FILE(binary), SeekOrigin.Begin);
-            fs.Read(instructionBytes, 0, 15);
-
-            var decoder = Iced.Intel.Decoder.Create(64, instructionBytes);
-            decoder.IP = (ulong)relocation.REAL_FUNCTION_ADDRESS;
-            decoder.Decode(out var instruction);
-
-            if (instruction.Code == Code.INVALID)
-            {
-                throw new Exception("Couldnt check if executable uses libSceNpEntitlementAccess, invalid instruction");
-            }
-
-            // since these functions are dynamically loaded, it can only be indirect jumps
-            if (!possibleJmpCodesInPltFunctionEntry.Contains(instruction.Code))
-            {
-                // if not an indirect jump, then this was likely patched by backporters in which case the real function isnt used
-                // of course they could call the real function from the patched one,
-                // but that would only make sense if they needed to modify the function parameters
-                // and afaik sony doesnt change functions like that in sdk updates
-                // im basing this on the fact that there is, for example, sceSaveDataUmount and sceSaveDataUmount2
-                // sceSaveDataUmount2 was added in a later sdk version and in that versions header file sceSaveDataUmount isnt present
-
-                // this whole thing is another edge case since most games dont implement dlc info functions from both libraries
-                // cod mw3 however does, and all the entitlement access functions are patched out
-                continue;
-            }
-
-            // if its an indirect jump, then the function really is used, so we can error since its not supported
-            throw new Exception($"This executable uses {unsupportedSymbol.symbol} (libSceNpEntitlementAccess) which is not supported");
-        }
-
-        // error if game doesnt use appcontent
-        bool hasRequiredAppContentSymbols = errorIfNoneOfTheseAreFound.Any(x => binary.Relocations.Any(y => y.SYMBOL is not null && y.SYMBOL.StartsWith(x)));
-        if (!hasRequiredAppContentSymbols)
+        bool hasImportantAppContentSymbols = binary.Relocations.Any(x => x.SYMBOL is not null && importantAppContentSymbols.Any(y => x.SYMBOL.StartsWith(y)));
+        if (!hasImportantAppContentSymbols && !hasImportantEntitlementAccessRelocations)
         {
             throw new Exception("This executable doesnt use any functions to get dlc info. This likely means this game loads dlcs in another executable.");
         }
@@ -401,6 +376,7 @@ internal class Program
 
         // if not check if the nids lengths are the same in libkernel and libSceAppContent
         // if yes we'll replace sceAppContentInitialize with sceKernelLoadStartModule
+        // if no and we need to load prx for libSceNpEntitlementAccess also then check sceNpEntitlementAccessInitialize also
         // if no fallback to in eboot handlers
         ulong? sceKernelLoadStartModuleMemOffset = null;
         if (hasSceKernelLoadStartModule)
@@ -410,36 +386,66 @@ internal class Program
         }
         else
         {
-            var libSceAppContentInitializeRelocation = binary.Relocations.FirstOrDefault(x => x.SYMBOL is not null && x.SYMBOL.StartsWith(Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentInitialize")));
-            if (libSceAppContentInitializeRelocation is null)
-            { throw new Exception("libSceAppContentNidLength is null (sceAppContentInitialize not found)"); }
-
             Ps4ModuleLoader.Relocation? libKernelRelocation;
-
             libKernelRelocation = binary.Relocations.FirstOrDefault(x => x.SYMBOL is not null && LibkernelNids.libkernelNids.Any(y => x.SYMBOL.StartsWith(y)));
 
             if (libKernelRelocation is null)
             { throw new Exception("libKernelNidLength is null"); }
 
-            // its probably okay if libkernel is shorter (with extra null bytes) just not the other way around
-            if (libSceAppContentInitializeRelocation.SYMBOL!.Length >= libKernelRelocation.SYMBOL!.Length) // ! -> we're checking for null in the linq query
+            if (hasImportantAppContentSymbols)
             {
-                // find symbol cause that contains the file offset
-                var libSceAppContentInitializeNidFileOffset = binary.Symbols.First(x => x.Value!.NID == libSceAppContentInitializeRelocation.SYMBOL).Value!.NID_FILE_ADDRESS;
+                var libSceAppContentInitializeRelocation = binary.Relocations.FirstOrDefault(x => x.SYMBOL is not null && x.SYMBOL.StartsWith(Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceAppContentInitialize")));
+                if (libSceAppContentInitializeRelocation is null)
+                { throw new Exception("sceAppContentInitialize not found"); }
 
-                // patch nid to sceKernelLoadStartModule
-                var newBytes = new byte[libSceAppContentInitializeRelocation.SYMBOL.Length];
+                // its probably okay if libkernel is shorter (with extra null bytes) just not the other way around
+                if (libSceAppContentInitializeRelocation.SYMBOL!.Length >= libKernelRelocation.SYMBOL!.Length) // ! -> we're checking for null in the linq query
+                {
+                    // find symbol cause that contains the file offset
+                    var libSceAppContentInitializeNidFileOffset = binary.Symbols.First(x => x.Value!.NID == libSceAppContentInitializeRelocation.SYMBOL).Value!.NID_FILE_ADDRESS;
 
-                var loadStartModuleNid = Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceKernelLoadStartModule");
-                Encoding.ASCII.GetBytes(loadStartModuleNid, newBytes);
-                // copy from first # to end
-                string libKernelLidMid = libKernelRelocation.SYMBOL.Substring(libKernelRelocation.SYMBOL.IndexOf('#'));
-                Encoding.ASCII.GetBytes(libKernelLidMid, 0, libKernelLidMid.Length, newBytes, loadStartModuleNid.Length);
+                    // patch nid to sceKernelLoadStartModule
+                    var newBytes = new byte[libSceAppContentInitializeRelocation.SYMBOL.Length];
 
-                var reencoded = Encoding.ASCII.GetString(newBytes);
+                    var loadStartModuleNid = Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceKernelLoadStartModule");
+                    Encoding.ASCII.GetBytes(loadStartModuleNid, newBytes);
+                    // copy from first # to end
+                    string libKernelLidMid = libKernelRelocation.SYMBOL.Substring(libKernelRelocation.SYMBOL.IndexOf('#'));
+                    Encoding.ASCII.GetBytes(libKernelLidMid, 0, libKernelLidMid.Length, newBytes, loadStartModuleNid.Length);
 
-                Patches.Add((libSceAppContentInitializeNidFileOffset, newBytes, "sceAppContentInitialize -> sceKernelLoadStartModule"));
-                sceKernelLoadStartModuleMemOffset = libSceAppContentInitializeRelocation.REAL_FUNCTION_ADDRESS;
+                    var reencoded = Encoding.ASCII.GetString(newBytes);
+
+                    Patches.Add((libSceAppContentInitializeNidFileOffset, newBytes, "sceAppContentInitialize -> sceKernelLoadStartModule"));
+                    sceKernelLoadStartModuleMemOffset = libSceAppContentInitializeRelocation.REAL_FUNCTION_ADDRESS;
+                }
+            }
+
+            if (sceKernelLoadStartModuleMemOffset is null && hasImportantEntitlementAccessRelocations)
+            {
+                var libSceNpEntitlementAccessInitializeRelocation = binary.Relocations.FirstOrDefault(x => x.SYMBOL is not null && x.SYMBOL.StartsWith(Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceNpEntitlementAccessInitialize")));
+                if (libSceNpEntitlementAccessInitializeRelocation is null)
+                { throw new Exception("sceNpEntitlementAccessInitialize not found"); }
+
+                // its probably okay if libkernel is shorter (with extra null bytes) just not the other way around
+                if (libSceNpEntitlementAccessInitializeRelocation.SYMBOL!.Length >= libKernelRelocation.SYMBOL!.Length) // ! -> we're checking for null in the linq query
+                {
+                    // find symbol cause that contains the file offset
+                    var libSceNpEntitlementAccessInitializeNidFileOffset = binary.Symbols.First(x => x.Value!.NID == libSceNpEntitlementAccessInitializeRelocation.SYMBOL).Value!.NID_FILE_ADDRESS;
+
+                    // patch nid to sceKernelLoadStartModule
+                    var newBytes = new byte[libSceNpEntitlementAccessInitializeRelocation.SYMBOL.Length];
+
+                    var loadStartModuleNid = Ps4ModuleLoader.Utils.CalculateNidForSymbol("sceKernelLoadStartModule");
+                    Encoding.ASCII.GetBytes(loadStartModuleNid, newBytes);
+                    // copy from first # to end
+                    string libKernelLidMid = libKernelRelocation.SYMBOL.Substring(libKernelRelocation.SYMBOL.IndexOf('#'));
+                    Encoding.ASCII.GetBytes(libKernelLidMid, 0, libKernelLidMid.Length, newBytes, loadStartModuleNid.Length);
+
+                    var reencoded = Encoding.ASCII.GetString(newBytes);
+
+                    Patches.Add((libSceNpEntitlementAccessInitializeNidFileOffset, newBytes, "sceNpEntitlementAccessInitialize -> sceKernelLoadStartModule"));
+                    sceKernelLoadStartModuleMemOffset = libSceNpEntitlementAccessInitializeRelocation.REAL_FUNCTION_ADDRESS;
+                }
             }
         }
 
@@ -455,7 +461,7 @@ internal class Program
             var codeSegment = binary.E_SEGMENTS.First(x => x.GetName() == "CODE");
             // sceKernelLoadStartModuleMemOffset already contains the mem_addr
             var sceKernelLoadStartModuleFileOffset = codeSegment.OFFSET + sceKernelLoadStartModuleMemOffset.Value - codeSegment.MEM_ADDR;
-            var ebootPatches = await PrxLoaderStuff.GetAllPatchesForExec(binary, fs, freeSpaceAtEndOfCodeSegment.fileEndAddressOfZeroes - freeSpaceAtEndOfCodeSegment.fileStartAddressOfZeroes, freeSpaceAtEndOfCodeSegment.fileStartAddressOfZeroes, sceKernelLoadStartModuleFileOffset);
+            var ebootPatches = await PrxLoaderStuff.GetAllPatchesForExec(binary, fs, freeSpaceAtEndOfCodeSegment.fileEndAddressOfZeroes - freeSpaceAtEndOfCodeSegment.fileStartAddressOfZeroes, freeSpaceAtEndOfCodeSegment.fileStartAddressOfZeroes, sceKernelLoadStartModuleFileOffset, hasImportantAppContentSymbols, hasImportantEntitlementAccessRelocations);
 
             Patches.AddRange(ebootPatches);
 
@@ -484,6 +490,11 @@ internal class Program
         }
         else
         {
+            if (hasImportantEntitlementAccessRelocations)
+            {
+                throw new Exception("Unsupported game. This executable uses libSceNpEntitlementAccess, but the necessary patches for loading prx is not possible and in-executable handlers are not implemented for this libSceNpEntitlementAccess.");
+            }
+
             if (!ConsoleUi.Confirm("Executable doesnt resolve sceKernelLoadStartModule by default and sceAppContentInitialize cant be replaced with sceKernelLoadStartModule because the encoded library id and module id length for libkernel is longer than libSceAppcontent. Do you want to allow fallback to a less safe, more limited method (fake entitlement key, limited number of dlcs)?"))
             {
                 throw new Exception("User aborted");
@@ -656,10 +667,10 @@ internal class Program
             }
         }
         else
-        { 
+        {
             Directory.CreateDirectory(outputFolder);
         }
-        
+
 
         var pkgFile = MemoryMappedFile.CreateFromFile(pkgPath, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
         Pkg pkg;
@@ -703,7 +714,7 @@ internal class Program
         var progressBar = new ConsoleUi.FileCopyProgressBar("Extracting dlc pkg", urootTotalUncompressedSize);
 
         var progressCallback = new Func<long, Task>(progressBar.Increment);
-        await ExtractInParallel(uroot.children, outputFolder, progressCallback,4);
+        await ExtractInParallel(uroot.children, outputFolder, progressCallback, 4);
 
         await progressBar.Update(urootTotalUncompressedSize);
 
@@ -729,7 +740,7 @@ internal class Program
         }
     }
 
-    private static async Task ExtractInParallel(IEnumerable<LibOrbisPkg.PFS.PfsReader.Node> nodes, string outPath, Func<long, Task>? progress = null,int maxConcurrentTasks = -1)
+    private static async Task ExtractInParallel(IEnumerable<LibOrbisPkg.PFS.PfsReader.Node> nodes, string outPath, Func<long, Task>? progress = null, int maxConcurrentTasks = -1)
     {
         await Parallel.ForEachAsync(nodes, new ParallelOptions { MaxDegreeOfParallelism = maxConcurrentTasks }, async (n, token) =>
         {
