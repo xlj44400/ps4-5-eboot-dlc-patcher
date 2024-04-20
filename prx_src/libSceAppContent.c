@@ -76,7 +76,7 @@ int32_t dlcldr_sceAppContentGetAddcontInfo(
 	
 	for (int i = 0; i < addcont_count; i++)
 	{
-		if (!strncmp(entitlementLabel->data, addcontInfo[i].entitlementLabel, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE-1))
+		if (strncmp(entitlementLabel->data, addcontInfo[i].entitlementLabel, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE-1))
 		{ continue; }
 
 		Logf_if_enabled("[dlcldr] dlcldr_sceAppContentGetAddcontInfo found %s", entitlementLabel->data);
@@ -106,7 +106,7 @@ int32_t dlcldr_sceAppContentGetEntitlementKey(
 
 	for (int i = 0; i < addcont_count; i++)
 	{
-		if (!strncmp(entitlementLabel->data, addcontInfo[i].entitlementLabel, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE-1))
+		if (strncmp(entitlementLabel->data, addcontInfo[i].entitlementLabel, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE-1))
 		{ continue; }
 
 		Logf_if_enabled("[dlcldr] dlcldr_sceAppContentGetEntitlementKey found key for %s", entitlementLabel->data);
@@ -140,7 +140,7 @@ int32_t dlcldr_sceAppContentAddcontMount(
 
 	for (int i = 0; i < addcont_count; i++)
 	{
-		if (!strncmp(entitlementLabel->data, addcontInfo[i].entitlementLabel, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE-1))
+		if (strncmp(entitlementLabel->data, addcontInfo[i].entitlementLabel, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE-1))
 		{ continue; }
 		
 		if (addcontInfo[i].status != SCE_APP_CONTENT_ADDCONT_DOWNLOAD_STATUS_INSTALLED)

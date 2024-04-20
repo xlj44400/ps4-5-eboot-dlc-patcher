@@ -59,7 +59,7 @@ static int append_to_log_file(const char *str)
 
 int32_t _init()
 {
-	if (DEBUG_MODE == 1 || DEBUG_MODE == 2)
+	if (DEBUG_MODE >= 1)
 	{
 		// delete previous log
 		sceKernelUnlink("/data/dlcldr.log");

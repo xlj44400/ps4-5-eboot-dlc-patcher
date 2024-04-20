@@ -34,7 +34,7 @@ int32_t sceNpEntitlementAccessGetAddcontEntitlementInfo(
 
 	for (int i = 0; i < addcont_count; i++)
 	{
-		if (!strncmp(entitlementLabel->data, addcontInfo[i].entitlementLabel, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE-1))
+		if (strncmp(entitlementLabel->data, addcontInfo[i].entitlementLabel, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE-1))
 		{ continue; }
 		
 		strncpy(info->entitlementLabel.data, addcontInfo[i].entitlementLabel, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE);
@@ -132,7 +132,7 @@ int32_t sceNpEntitlementAccessGetEntitlementKey(
 
 	for (int i = 0; i < addcont_count; i++)
 	{
-		if (!strncmp(entitlementLabel->data, addcontInfo[i].entitlementLabel, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE-1))
+		if (strncmp(entitlementLabel->data, addcontInfo[i].entitlementLabel, SCE_NP_UNIFIED_ENTITLEMENT_LABEL_SIZE-1))
 		{ continue; }
 		
 		memcpy(key->data, addcontInfo[i].key, SCE_APP_CONTENT_ENTITLEMENT_KEY_SIZE);
