@@ -1,17 +1,24 @@
 # ps4-eboot-dlc-patcher
 
-This is intended to be used on ps5 where dlc fpkgs dont work. It automatically patches the eboot (or other executables) to use custom prx which replaces calls to the `libSceAppContent` library to load dlcs from the base pkg.
+This is intended to be used on ps5 where dlc fpkgs dont work. It automatically patches the eboot (or other executables) to use custom prx which replaces calls to the `libSceAppContent` and `libSceNpEntitlementAccess` library to load dlcs from the base pkg.
 
 ![showcase](https://github.com/idlesauce/ps4-eboot-dlc-patcher/assets/148508202/87d5fb21-f442-45b5-bba9-d4cff2e5de2d)
 
 ## Tools
-- [selfutil-patched](https://github.com/xSpecialFoodx/SelfUtil-Patched) (Make sure you use this, as this is the only reliable version)
-- For repacking and extracting the update you can use either [Modded Warfare's Patch Builder](https://www.mediafire.com/file/xw0zn2e0rjaf5k7/Patch_Builder_v1.3.3.zip/file) or if you prefer you can also use [PS4-Fake-PKG-Tools-3.87](https://github.com/CyB1K/PS4-Fake-PKG-Tools-3.87)
+- [selfutil-patched](https://github.com/xSpecialFoodx/SelfUtil-Patched) (Make sure you use this, as this is the only reliable version), if you have missing dlls cyb1k's fork should also work: [selfutil-patched](https://github.com/CyB1K/SelfUtil-Patched)
+- For repacking and extracting the base/update either of the following:
+    - [Modded Warfare's Patch Builder](https://www.mediafire.com/file/xw0zn2e0rjaf5k7/Patch_Builder_v1.3.3.zip/file) <- this is the easiest to use
+    - [PS4-Fake-PKG-Tools-3.87](https://github.com/CyB1K/PS4-Fake-PKG-Tools-3.87)
+    - [PkgEditor or PkgTool](https://github.com/maxton/LibOrbisPkg/releases/latest), which is able to extract fake pkgs with a custom passcode, and the cli version runs cross-platform however it can only build base packages.
 
 ## Download
 - [Windows 64-bit](https://github.com/idlesauce/ps4-eboot-dlc-patcher/releases/latest/download/ps4-eboot-dlc-patcher-win-x64.exe)
 
-Other os and arch binaries are available [here](https://github.com/idlesauce/ps4-eboot-dlc-patcher/releases/latest), along with a `framework-dependent` version which is cross-platform, but requires the dotnet 8 runtime.
+Other os and arch binaries are available [here](https://github.com/idlesauce/ps4-eboot-dlc-patcher/releases/latest). 
+
+Releases with os and architecture tags are compiled with native AOT, so they dont require any dependencies other than an ansi compatible terminal, which is default on windows 10 and above, if you happen to use an older windows version [conemu](https://conemu.github.io/) works.
+
+There is also a `framework-dependent` release which is cross-platform, but requires the dotnet 8 runtime, you can run this like this `dotnet ps4-eboot-dlc-patcher.dll <args>`
   
 ## Instructions
 1. Extract the update pkg of the game, or if the game is base only or merged base+update, then extract the `Sc0` and `sce_sys` folders along with the executables to patch. The executables you need will most likely be `eboot.bin` and other `.elf` files (most games only use the `eboot.bin`) (it could also be `.prx`, but ignore `.prx` files in the `sce_module` folder)
@@ -23,7 +30,8 @@ Other os and arch binaries are available [here](https://github.com/idlesauce/ps4
 1. Repack the update
 
 ## Limitations
-- Right now only games that rely on `libSceAppContent` is supported, some newer cross-gen games use `libSceNpEntitlementAccess`, if this is the case the patcher will give an error, support for this library is doable i just havent gotten around to it yet.
+- Only functions that are in fw 9.xx are fully supported, so games backported to that version or older work. As far as i can tell as of now (latest is ps4 11.xx) there was only one new function added to the related libraries (`sceNpEntitlementAccessGetGameTrialsFlag`), i added this to the prx to avoid a certain crash if the game calls this however its not properly implemented, so games up to 11.xx may or may not work.
+- 99+% of games should work with the prx method, but theres a fallback to in executable handlers, however this only handles up to 99 dlcs, and doesnt support entitlement keys or entitlement access, for these scenarios the patcher will give a heads up.
 - I have encountered one game (Shadow of the Tomb Raider) that only accepts root directory mount points for dlcs, so the dlcXX subdirectory my patcher uses did not work (tested the mountpoint as /data which worked). Thankfully this game already checks for the dlc data in app0 so you can just copy the dlc files into the update and not even need patches with this app. I tested the mountpoint as /data/dlc00 with data both in that folder and in /data, and it didnt work, which means the game doesnt just strip the subdirectory, it completely disregards the mountpoint, not trusting what the "system" returns is unusual for a game to do, so this game is an exception, this shouldnt be a widespread issue.
 
 ## Notes

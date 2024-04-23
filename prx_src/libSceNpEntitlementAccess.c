@@ -48,6 +48,10 @@ int32_t sceNpEntitlementAccessGetAddcontEntitlementInfo(
 	return SCE_NP_ENTITLEMENT_ACCESS_ERROR_NO_ENTITLEMENT;
 }
 
+
+// not part of ps4 sdk 8.00 stub
+// also not there in https://github.com/idc/ps4libdoc/blob/9.00/system/common/lib/libSceNpEntitlementAccess.sprx.json
+// so this could be ignored
 int32_t sceNpEntitlementAccessGetAddcontEntitlementInfoIndividual()
 {
 	// i couldnt figure out what this function is for
@@ -144,6 +148,8 @@ int32_t sceNpEntitlementAccessGetEntitlementKey(
 	return SCE_NP_ENTITLEMENT_ACCESS_ERROR_NO_ENTITLEMENT;
 }
 
+// if its not part of ps5 4.03 its also not part of ps4 9.00
+// so this could be ignored
 int32_t sceNpEntitlementAccessGetGameTrialsFlag()
 {
 	// this isn't even part of the lib on 4.03 so i have no info
