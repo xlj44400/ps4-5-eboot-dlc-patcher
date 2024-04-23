@@ -21,6 +21,8 @@ Releases with os and architecture tags are compiled with native AOT, so they don
 There is also a `framework-dependent` release which is cross-platform, but requires the dotnet 8 runtime, you can run this like this `dotnet ps4-eboot-dlc-patcher.dll <args>`
   
 ## Instructions
+Video tutorial by Modded Warfare: [https://www.youtube.com/watch?v=xWu-a7Im3V8](https://www.youtube.com/watch?v=xWu-a7Im3V8)
+
 1. Extract the update pkg of the game, or if the game is base only or merged base+update, then extract the `Sc0` and `sce_sys` folders along with the executables to patch. The executables you need will most likely be `eboot.bin` and other `.elf` files (most games only use the `eboot.bin`) (it could also be `.prx`, but ignore `.prx` files in the `sce_module` folder)
 1. Run selfutil on the executables to decrypt them.
 1. For the easiest usage copy all the dlc pkgs and executables into a folder then highlight and drag them onto the `ps4-eboot-dlc-patcher` exe. (You can also drag just the dlc pkgs onto it and enter the executables paths in the menu, or enter all paths as cli arguments)
@@ -45,3 +47,4 @@ There is also a `framework-dependent` release which is cross-platform, but requi
 - [maxton](https://github.com/maxton) for creating [LibOrbisPkg](https://github.com/OpenOrbis/LibOrbisPkg) and the [OpenOrbis team](https://github.com/OpenOrbis) for maintaining it.
 - [Iced](https://github.com/icedland/iced)
 - [spectre.console](https://github.com/spectreconsole/spectre.console)
+- Big shoutout to [hrdcrd](https://twitter.com/hrdcrd) for testing a ton of games and reporting bugs!
