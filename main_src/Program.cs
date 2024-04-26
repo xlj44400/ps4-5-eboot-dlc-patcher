@@ -495,12 +495,12 @@ internal class Program
                 throw new Exception("Unsupported game. This executable uses libSceNpEntitlementAccess, but the necessary patches for loading prx is not possible and in-executable handlers are not implemented for this libSceNpEntitlementAccess.");
             }
 
-            if (!ConsoleUi.Confirm("Executable doesnt resolve sceKernelLoadStartModule by default and sceAppContentInitialize cant be replaced with sceKernelLoadStartModule because the encoded library id and module id length for libkernel is longer than libSceAppcontent. Do you want to allow fallback to a less safe, more limited method (fake entitlement key, limited number of dlcs)?"))
+            if (!ConsoleUi.Confirm("Executable doesnt resolve sceKernelLoadStartModule and modding in this function instead of sceAppContentInitialize is not possible for this game. This function is required to load the prx. Do you want to allow fallback to a less safe, more limited method that uses in executable handlers? (fake entitlement key, limited number of dlcs)"))
             {
                 throw new Exception("User aborted");
             }
 
-            ConsoleUi.LogWarning("Falling back to in eboot dlcldr method");
+            ConsoleUi.LogWarning("Falling back to in executable method");
 
 
             var inEbootPatches = await InExecutableLoaderStuff.GetAllInEbootPatchesForExec(binary, fs, freeSpaceAtEndOfCodeSegment.fileEndAddressOfZeroes - freeSpaceAtEndOfCodeSegment.fileStartAddressOfZeroes, freeSpaceAtEndOfCodeSegment.fileStartAddressOfZeroes, dlcList);

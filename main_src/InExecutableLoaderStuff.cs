@@ -11,7 +11,7 @@ internal static class InExecutableLoaderStuff
     {
         if (dlcList.Any(x => x.EntitlementKey.Any(keyByte => keyByte != 0x0)))
         {
-            if (ConsoleUi.Confirm("Detected non-zero entitlement key(s) in DLC list. In this mode the real entitlement keys are ignored and only zeroes will be passed to the game. Continue?"))
+            if (!ConsoleUi.Confirm("Detected non-zero entitlement key(s) in DLC list. In this mode the real entitlement keys are ignored and only zeroes will be passed to the game. Continue?"))
             {
                 throw new Exception("User aborted");
             }
