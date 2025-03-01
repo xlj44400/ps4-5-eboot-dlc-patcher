@@ -24,18 +24,6 @@ jobs:
           - architecture: 'win-x64'
             runner: 'windows-latest'
             file_extension: '.exe'
-          - architecture: 'win-arm64'
-            runner: 'windows-latest'
-            file_extension: '.exe'
-          - architecture: 'linux-x64'
-            runner: 'ubuntu-latest'
-            file_extension: ''
-          - architecture: 'linux-arm64'
-            runner: 'ubuntu-latest'
-            file_extension: ''
-          - architecture: 'framework-dependent'
-            runner: 'ubuntu-latest'
-            file_extension: '.zip'
     runs-on: ${{ matrix.runner }}
 
     steps:
@@ -78,7 +66,7 @@ jobs:
       run: mv ./publish/${{ matrix.architecture }}/${{ env.OUTPUT_FILE_BASE_NAME }}${{ matrix.file_extension }} ./publish/${{ matrix.architecture }}/${{ env.OUTPUT_FILE_BASE_NAME }}-${{ matrix.architecture }}${{ matrix.file_extension }}
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: publish-${{ matrix.architecture }}
         path: ./publish/${{ matrix.architecture }}/${{ env.OUTPUT_FILE_BASE_NAME }}-${{ matrix.architecture }}${{ matrix.file_extension }}
