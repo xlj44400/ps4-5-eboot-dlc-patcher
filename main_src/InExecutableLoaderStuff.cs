@@ -227,7 +227,7 @@ internal static class InExecutableLoaderStuff
         //mov eax, 0x80D90007
         //ret
 
-        if (dlcCount > 99)
+        if (dlcCount > 999)
         {
             throw new ArgumentOutOfRangeException(nameof(dlcCount), "DLC count must be less than 100 for in eboot handler");
         }
